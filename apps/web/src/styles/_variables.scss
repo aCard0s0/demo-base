@@ -1,0 +1,120 @@
+// Color Palette - Golden Theme
+$primary-gold: #d4ad58;
+$primary-dark: #8f6c2a;
+$accent-red: #d4584d;
+$accent-info: #3f7ccf;
+$accent-emerald: #1f9773;
+$accent-orange: #d99534;
+
+// Solid-fill counterparts of the accents above, for a filled surface carrying white text.
+//
+// The accents are tuned as FOREGROUND colours — text, icons, borders — against the page background,
+// and reusing one as a fill under `#fff` inverts the relationship it was chosen for. Measured against
+// white: red 3.96:1, emerald 3.32:1, orange 2.83:1 in this (light) theme and 2.71 / 2.10 / 1.89 in
+// dark, so every filled danger/success/warning button in the product failed WCAG 1.4.3, and most
+// failed even the 3:1 of 1.4.11.
+//
+// These are darkened to clear 4.5:1 against white, so a filled button carrying a text label is
+// compliant. Kept as separate tokens rather than darkening the accents: those are correct where they
+// are used as foregrounds, and changing them would shift every red/green/amber label and border.
+$accent-red-fill: #b8443a;
+$accent-emerald-fill: #1a6e54;
+$accent-orange-fill: #8f5c0f;
+
+// Text counterparts of the accents, for an accent set as `color:` on a faint TINT OF ITSELF — badge
+// tones, `.alert-*`, error banners, active nav items, status pills.
+//
+// The mirror of the defect above. A tint of an accent moves the background TOWARDS that accent,
+// which is exactly the wrong direction for text in the same accent, and the light theme's near-white
+// bases have no room to give. Measured on a 14% tint over `$card-bg`: red 3.28, emerald 3.07, info 3.50,
+// orange 2.21, and raw gold 1.90:1 — every one under 1.4.3's 4.5:1, and the darker light bases take each
+// of those down another ~0.3.
+//
+// Tuned to clear 4.5:1 with margin at the deepest tint in use (16%) over the DARKEST light base a tinted
+// surface can sit on, `$light-bg-tertiary` — not just `$card-bg`. A badge lands in toolbars and panels,
+// so the base is not knowable from the rule that sets the colour.
+//
+// Separate tokens rather than darkened accents, for the same reason as the fills: the accents are correct
+// against the page, and moving them would shift every red/green/amber label and border in the product.
+$accent-red-text: #973e37;
+$accent-emerald-text: #15674f;
+$accent-info-text: #2e5b98;
+
+// `--primary-gold-text` predates all of this and was the only darkened sibling that existed. It resolved
+// to `$primary-dark`, which reaches just 4.38:1 on the 12% gold tint of `.alert-warning` and 4.32:1 on the
+// badge's 14% — the convention was the right shape at the wrong value. `$primary-dark` keeps its own value
+// (it is a hover fill, not a foreground); only the text token moves.
+$primary-gold-text: #735e30;
+
+// The foreground that goes ON those fills — always this one, in BOTH themes.
+//
+// Do not reach for `--text-on-accent` here. That token flips per theme (near-white in light,
+// near-black in dark) because it sits on raw accents, which are lightened in dark. The fills go the
+// other way: they are darkened in dark. Pairing the two produces a surface that fails in whichever
+// theme you did not check — near-black on the fills measures 3.69 / 3.56 / 3.74 in dark, worse than
+// the raw accents it was meant to fix. This one holds at 5.01 / 5.78 / 5.30 (light) and
+// 4.73 / 4.91 / 4.67 (dark), so a fill + `--text-on-fill` pairing is correct without a second look.
+$text-on-fill: #fbf7ef;
+
+// Light Theme Colors
+$light-bg-primary: #f5f2eb;
+$light-bg-secondary: #faf7f1;
+$light-bg-tertiary: #ece5d8;
+$light-border: #d8cfbf;
+$light-border-dark: #bba987;
+$light-text-primary: #19150f;
+$light-text-secondary: #463d31;
+$light-text-muted: #6a604f;
+$text-on-accent: #fbf7ef;
+
+// Card backgrounds
+$card-bg: #fffdf8;
+$card-border: #d7cdbe;
+
+// Shadows
+$shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+// Border Radius
+$radius-sm: 0.375rem;
+$radius-md: 0.5rem;
+$radius-lg: 0.75rem;
+$radius-full: 9999px;
+
+$spacing-2xs: 0.375rem;
+$spacing-xs: 0.5rem;
+$spacing-sm: 0.75rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-2xl: 3rem;
+
+// Typography
+$font-family-base: 'Source Sans 3', 'Segoe UI', 'Roboto', sans-serif;
+$font-family-heading: 'DM Sans', 'Source Sans 3', sans-serif;
+$font-family-mono: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', 'Source Code Pro', monospace;
+$font-size-display-lg: clamp(2rem, 2.4vw + 1rem, 3rem);
+$font-size-display-md: clamp(1.75rem, 1.5vw + 1rem, 2.25rem);
+$font-size-heading-lg: clamp(1.5rem, 0.9vw + 1rem, 1.875rem);
+$font-size-heading-md: clamp(1.25rem, 0.6vw + 1rem, 1.5rem);
+$font-size-heading-sm: clamp(1.125rem, 0.4vw + 0.95rem, 1.25rem);
+
+// Transitions
+$transition-base: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+$transition-fast: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+$sidebar-layout-duration: 0.3s;
+$sidebar-layout-easing: cubic-bezier(0.4, 0, 0.2, 1);
+$sidebar-layout-transition: margin-left $sidebar-layout-duration $sidebar-layout-easing, width $sidebar-layout-duration $sidebar-layout-easing;
+
+// Z-Index Scale
+$z-navbar: 1200;
+
+// Layout
+$navbar-height: 70px;
+$sidebar-width-collapsed: 64px;
+$sidebar-width-expanded: 260px;
+
+// Breakpoints
+$breakpoint-sm: 576px;
+$breakpoint-sm-plus: 600px;
+$breakpoint-md: 768px;
+$breakpoint-md-plus: 900px;
+$breakpoint-lg: 992px;
+$breakpoint-xl: 1200px;

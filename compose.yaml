@@ -1,0 +1,150 @@
+# The whole stack: `docker compose up -d --build --wait`, then http://localhost:3000.
+# Postgres alone, for running the services from the IDE: `docker compose up -d --wait db db-init` (with the port
+# compose.override.yaml publishes). Settings come from .env (see .env.example); anything unset keeps the
+# service's development default, so the stack starts with no .env at all -- fine on a laptop, wrong anywhere else.
+# Only the web publishes a port; the services and the database talk to each other over the compose network.
+services:
+  db:
+    image: postgres:18-alpine
+    # Postgres' own floor is shared_buffers (128MB by default) plus a little per connection; the three
+    # services open one small Hikari pool each.
+    mem_limit: 192m
+    cpus: 0.5
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      # Postgres 18+ puts the cluster in a major-version subdirectory, so the mount goes one
+      # level up at /var/lib/postgresql. The pre-18 path (.../data) is refused outright.
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # Creates whatever role and database is missing, then exits. It runs on every `up`, not only when the
+  # volume is new, so a service added later gets its database on the volume that already exists.
+  db-init:
+    image: postgres:18-alpine
+    mem_limit: 32m
+    cpus: 0.5
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ./docker/initdb.sql:/initdb.sql:ro
+    command: ["psql", "-h", "db", "-U", "postgres", "-v", "ON_ERROR_STOP=1", "-f", "/initdb.sql"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: .
+      target: auth-service
+    # Measured, not guessed: see the resources section of the README for how to re-measure. The JVM reads
+    # the cgroup limit, so mem_limit is what sizes the heap -- at 50% of 352m that is a 176m heap, leaving
+    # the rest for metaspace, code cache, thread stacks and the GC itself.
+    mem_limit: 352m
+    cpus: 1.0
+    # .env's names are the services' own environment bindings (ADMIN_EMAIL, OAUTH_GOOGLE_*, ...), so it is
+    # handed over whole rather than repeated here.
+    env_file: [{ path: .env, required: false }]
+    environment:
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=50
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/auth
+      # Mailpit unless .env names a real server.
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-mailpit}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-1025}
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9081/api/public/stats || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Catches every mail auth-service sends (the links that prove an address): http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.28
+    mem_limit: 64m
+    cpus: 0.5
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  todo-service:
+    build:
+      context: .
+      target: todo-service
+    # Same JVM arithmetic as auth-service.
+    mem_limit: 352m
+    cpus: 1.0
+    env_file: [{ path: .env, required: false }]
+    environment:
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=50
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/todo
+      # Only the public half of the signing key ever crosses this network.
+      AUTH_JWKS_URI: http://auth-service:9081/api/jwks.json
+      AUTH_TOKEN_VERSIONS_URI: http://auth-service:9081/internal/token-versions
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9082/api/public/todos/stats || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  agent-service:
+    build:
+      context: .
+      target: agent-service
+    # Same JVM arithmetic as the other two; this one also carries the MCP server and client.
+    mem_limit: 384m
+    cpus: 1.0
+    env_file: [{ path: .env, required: false }]
+    environment:
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=50
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/agent
+      AUTH_JWKS_URI: http://auth-service:9081/api/jwks.json
+      AUTH_TOKEN_VERSIONS_URI: http://auth-service:9081/internal/token-versions
+      AUTH_AGENT_TOKENS_URI: http://auth-service:9081/internal/agent-tokens
+      # The deployment's own MCP servers an owner may attach by their private name. .env may override.
+      AGENTS_TRUSTED_SERVER_URLS: ${AGENTS_TRUSTED_SERVER_URLS:-http://todo-service:9082/mcp}
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      auth-service:
+        condition: service_healthy
+      todo-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9083/actuator/health || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # The Angular app on nginx, routing /api and /mcp to the services like the dev server (docker/nginx.conf).
+  web:
+    build:
+      context: .
+      target: web
+    mem_limit: 32m
+    cpus: 0.5
+    # Loopback, like Mailpit: the development defaults (admin, secrets) must not face the LAN.
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      todo-service:
+        condition: service_healthy
+      agent-service:
+        condition: service_healthy
+
+volumes:
+  db-data:

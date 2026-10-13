@@ -1,0 +1,36 @@
+<nav class="navbar" [class.sidebar-expanded]="isSidebarOpen()" aria-label="Primary navigation">
+  <div class="navbar-container">
+    <!-- Sidebar Toggle (Mobile) -->
+    <button
+      class="sidebar-toggle-btn"
+      (click)="sidebarToggle.emit()"
+      aria-label="Toggle sidebar menu"
+      [attr.aria-expanded]="isSidebarOpen()">
+      <i class="bi" [class.bi-list]="!isSidebarOpen()" [class.bi-x-lg]="isSidebarOpen()"></i>
+    </button>
+
+    <div class="navbar-breadcrumb" aria-label="Breadcrumb">
+      @for (crumb of breadcrumbs(); track crumb.url; let last = $last) {
+        @if (!last) {
+          <a [routerLink]="crumb.url" class="breadcrumb-link">{{ crumb.label }}</a>
+          <i class="bi bi-chevron-right breadcrumb-separator" aria-hidden="true"></i>
+        } @else {
+          <span class="breadcrumb-current" aria-current="page">{{ crumb.label }}</span>
+        }
+      }
+    </div>
+
+    <!-- Keyed on the token, not the user: a /me that failed for any reason but a 401 still leaves a way in. -->
+    @if (auth.token()) {
+      <a routerLink="/profile" class="navbar-user" [title]="auth.user()?.email ?? ''" aria-label="Profile">
+        <i class="bi bi-person-circle" aria-hidden="true"></i>
+        <span class="navbar-user-name">{{ auth.user()?.name ?? 'Profile' }}</span>
+      </a>
+    } @else {
+      <a routerLink="/login" class="navbar-user" aria-label="Sign in">
+        <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>
+        <span class="navbar-user-name">Sign in</span>
+      </a>
+    }
+  </div>
+</nav>

@@ -1,0 +1,121 @@
+<div class="agents-page">
+  <a class="auth-card hint" routerLink="/agents">← All agents</a>
+
+  @if (error()) {
+    <p class="auth-card auth-error" role="alert">{{ error() }}</p>
+  }
+
+  @if (agent(); as a) {
+    <section class="auth-card">
+      <h1 class="auth-title">{{ a.name }}</h1>
+      @if (notice()) {
+        <p class="auth-ok" role="status">{{ notice() }}</p>
+      }
+      <form ngNativeValidate (ngSubmit)="save()" class="auth-form">
+        <div class="field">
+          <label for="name">Name</label>
+          <input id="name" name="name" [(ngModel)]="name" required maxlength="100" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="instructions">Instructions</label>
+          <textarea id="instructions" name="instructions" [(ngModel)]="instructions" rows="6" maxlength="8000"></textarea>
+          <span class="hint">What a connecting client reads first.</span>
+        </div>
+        <div class="field">
+          <label for="othersAccess">Access to your other agents</label>
+          <select id="othersAccess" name="othersAccess" [(ngModel)]="othersAccess">
+            @for (o of othersAccessChoices; track o.value) {
+              <option [value]="o.value">{{ o.label }}</option>
+            }
+          </select>
+          <span class="hint">Never its own setup, whatever the level.</span>
+        </div>
+        <button type="submit" class="btn btn-primary" [disabled]="busy()">Save</button>
+      </form>
+    </section>
+
+    <section class="auth-card">
+      <h2 class="section-title">MCP servers</h2>
+      @if (a.servers.length) {
+        <ul class="item-list">
+          @for (s of a.servers; track s.id) {
+            <li>
+              <div class="item-head">
+                <strong>{{ s.name }}</strong>
+                <span class="badge" [class.text-bg-warning]="s.access === 'WRITE'" [class.text-bg-secondary]="s.access === 'READ'">
+                  {{ s.access }}
+                </span>
+              </div>
+              <div class="mono">{{ s.url }}</div>
+              <div class="hint">
+                {{ s.trusted ? "This deployment's own server" : 'Added by you' }}
+                @if (s.forwardCallerToken) {
+                  · forwards the connecting token
+                } @else if (s.hasAuthHeader) {
+                  · auth header stored
+                }
+                @if (!s.trusted) {
+                  · read-only: {{ s.readOnlyTools.length ? s.readOnlyTools.join(', ') : 'none' }}
+                }
+              </div>
+              @if (editing() === s.id) {
+                <app-server-form [agentId]="a.id" [server]="s" (saved)="serverSaved($event)" (cancelled)="editing.set(null)" />
+              } @else {
+                <div class="row-actions">
+                  <button type="button" class="btn btn-outline-secondary" (click)="editing.set(s.id)">Edit</button>
+                  <button type="button" class="btn btn-outline-secondary" [disabled]="busy()" (click)="removeServer(s)">Remove</button>
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="hint">No servers yet: this agent offers no tools but the built-in ones its access to your other agents allows.</p>
+      }
+      @if (editing() === 'new') {
+        <app-server-form [agentId]="a.id" (saved)="serverSaved($event)" (cancelled)="editing.set(null)" />
+      } @else {
+        <button type="button" class="btn btn-outline-secondary" (click)="editing.set('new')">Add server</button>
+      }
+    </section>
+
+    <section class="auth-card">
+      <app-agent-token [agentId]="a.id" [agentName]="a.name" (changed)="loadActivity()" />
+    </section>
+
+    <section class="auth-card">
+      <div class="item-head">
+        <h2 class="section-title">Activity</h2>
+        <div class="row-actions">
+          <select name="kind" aria-label="Activity kind" [(ngModel)]="kind">
+            <option value="">All kinds</option>
+            @for (k of kinds; track k) {
+              <option [value]="k">{{ k }}</option>
+            }
+          </select>
+          <button type="button" class="btn btn-outline-secondary" (click)="loadActivity()">Refresh</button>
+        </div>
+      </div>
+      <p class="hint">The newest hundred lines. A refusal says why; what ran shows what it was called with and what came back.</p>
+      @if (shown().length) {
+        <ul class="item-list activity">
+          @for (line of shown(); track line.id) {
+            <li>
+              <time [attr.datetime]="line.at">{{ line.at | date: 'medium' }}</time>
+              <span [class]="'badge ' + badge(line)">{{ line.kind }}</span>
+              <div class="mono">{{ line.detail }}</div>
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="hint">Nothing yet.</p>
+      }
+    </section>
+
+    <section class="auth-card">
+      <h2 class="section-title">Delete</h2>
+      <p class="hint">Removes the agent, its servers and its activity. Its tokens stop working.</p>
+      <button type="button" class="btn btn-outline-danger" [disabled]="busy()" (click)="delete()">Delete agent</button>
+    </section>
+  }
+</div>

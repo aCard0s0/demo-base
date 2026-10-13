@@ -1,0 +1,69 @@
+@if (error()) {
+  <p class="auth-error" role="alert">{{ error() }}</p>
+}
+<form ngNativeValidate (ngSubmit)="save()" class="auth-form">
+  <div class="field">
+    <label for="server-name">Name</label>
+    <input id="server-name" name="name" [(ngModel)]="name" required pattern="[a-z0-9_\-]{1,20}" autocomplete="off" />
+    <span class="hint">1–20 of a–z, 0–9, _ or -. Prefixes every tool name: <span class="mono">{{ name() || 'name' }}__tool</span>.</span>
+  </div>
+  <div class="field">
+    <label for="server-url">URL</label>
+    <input id="server-url" name="url" type="url" [(ngModel)]="url" required maxlength="255" autocomplete="off" />
+    <span class="hint">A public http(s) address, or one of this deployment's own servers.</span>
+  </div>
+  <div class="field">
+    <label for="server-access">Access</label>
+    <select id="server-access" name="access" [(ngModel)]="access">
+      <option value="READ">READ: only tools that only read</option>
+      <option value="WRITE">WRITE: every tool</option>
+    </select>
+  </div>
+
+  @if (!server()?.trusted) {
+    <div class="field">
+      <label for="server-tools">Read-only tools</label>
+      <input id="server-tools" name="readOnlyTools" [(ngModel)]="readOnlyTools" autocomplete="off" />
+      <span class="hint">
+        Comma separated: what READ may offer. A server you add is not taken at its word, so an empty list offers
+        nothing on READ. This deployment's own servers mark their tools themselves.
+      </span>
+    </div>
+  }
+
+  @if (server()?.trusted || server()?.forwardCallerToken) {
+    <label class="check">
+      <input type="checkbox" name="forwardCallerToken" [(ngModel)]="forwardCallerToken" />
+      Forward the connecting client's token
+    </label>
+    <span class="hint">
+      Only for this deployment's own servers: it is your whole authority, and replaces the auth header below.
+    </span>
+  }
+
+  <div class="field">
+    <label for="server-header">Authorization header</label>
+    <!-- type=password: a secret on screen is a secret on a screenshot. Never filled from what is stored. -->
+    <input
+      id="server-header"
+      name="authHeader"
+      type="password"
+      [(ngModel)]="authHeader"
+      [disabled]="clearAuthHeader()"
+      maxlength="1400"
+      autocomplete="off"
+      [placeholder]="server()?.hasAuthHeader ? 'stored, leave blank to keep it' : 'e.g. Bearer …'" />
+    <span class="hint">Sent to this server as <span class="mono">Authorization</span>. Encrypted at rest and never shown again.</span>
+  </div>
+  @if (server()?.hasAuthHeader) {
+    <label class="check">
+      <input type="checkbox" name="clearAuthHeader" [(ngModel)]="clearAuthHeader" />
+      Remove the stored header
+    </label>
+  }
+
+  <div class="row-actions">
+    <button type="submit" class="btn btn-primary" [disabled]="busy()">{{ server() ? 'Save server' : 'Add server' }}</button>
+    <button type="button" class="btn btn-outline-secondary" (click)="cancelled.emit()">Cancel</button>
+  </div>
+</form>

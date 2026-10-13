@@ -1,0 +1,7 @@
+**/target
+.idea
+data
+.env
+**/node_modules
+**/.angular
+**/dist

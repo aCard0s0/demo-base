@@ -1,0 +1,104 @@
+@use 'styles/variables' as *;
+
+// Shared by /login, /signup and /profile: one narrow card on the page background.
+:host {
+  display: block;
+  padding: $spacing-2xl $spacing-md;
+}
+
+.auth-card {
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: $spacing-lg;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: $radius-lg;
+  color: var(--text-primary);
+}
+
+.auth-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 $spacing-md;
+}
+
+.auth-form {
+  display: grid;
+  gap: $spacing-md;
+}
+
+.auth-error,
+.auth-ok {
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-sm;
+  font-size: 0.875rem;
+}
+
+.auth-error {
+  color: var(--accent-red-text);
+  background: var(--accent-red-fill);
+}
+
+.auth-ok {
+  color: var(--accent-emerald-text);
+  background: var(--accent-emerald-fill);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  margin: $spacing-lg 0 $spacing-md;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid var(--border);
+  }
+}
+
+.auth-providers {
+  display: grid;
+  gap: $spacing-xs;
+}
+
+.auth-switch {
+  margin: $spacing-lg 0 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.profile-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+
+  .auth-title {
+    margin: 0;
+  }
+}
+
+.profile-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: $spacing-2xs $spacing-md;
+  margin: $spacing-md 0;
+  font-size: 0.875rem;
+
+  dt {
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+
+  dd {
+    margin: 0;
+  }
+}

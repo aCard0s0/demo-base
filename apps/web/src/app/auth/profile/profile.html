@@ -1,0 +1,59 @@
+<section class="auth-card">
+  <header class="profile-header">
+    <h1 class="auth-title">Profile</h1>
+    <button type="button" class="btn btn-outline-secondary" (click)="logout()">
+      <i class="bi bi-box-arrow-right" aria-hidden="true"></i> Sign out
+    </button>
+  </header>
+
+  @if (user(); as u) {
+    <dl class="profile-facts">
+      <dt>Role</dt>
+      <dd><span class="badge text-bg-secondary">{{ u.role }}</span></dd>
+      <dt>Sign-in</dt>
+      <dd>{{ u.passwordSet ? 'Email and password' : 'Provider only' }}</dd>
+    </dl>
+
+    @if (error()) {
+      <p class="auth-error" role="alert">{{ error() }}</p>
+    }
+    @if (notice()) {
+      <p class="auth-ok" role="status">{{ notice() }}</p>
+    }
+
+    <form ngNativeValidate (ngSubmit)="save()" class="auth-form">
+      <div class="field">
+        <label for="name">Name</label>
+        <input id="name" name="name" [(ngModel)]="name" required maxlength="255" autocomplete="name" />
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          [(ngModel)]="email"
+          required
+          maxlength="255"
+          autocomplete="email" />
+      </div>
+
+      @if (u.passwordSet) {
+        <div class="field">
+          <label for="newPassword">New password</label>
+          <input id="newPassword" name="newPassword" type="password" [(ngModel)]="newPassword" minlength="8" autocomplete="new-password" />
+          <span class="hint">Leave blank to keep the current one. Changing it signs you out everywhere else.</span>
+        </div>
+        <div class="field">
+          <label for="currentPassword">Current password</label>
+          <input id="currentPassword" name="currentPassword" type="password" [(ngModel)]="currentPassword" required autocomplete="current-password" />
+          <span class="hint">Required for any change. A new email is confirmed by a link sent to it.</span>
+        </div>
+      } @else {
+        <p class="hint">You sign in with a provider, so there is no password to change. A new email is approved from your current inbox, then confirmed from the new one; your next provider sign-in is matched on it.</p>
+      }
+
+      <button type="submit" class="btn btn-primary" [disabled]="busy()">Save</button>
+    </form>
+  }
+</section>

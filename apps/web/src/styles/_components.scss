@@ -1,0 +1,163 @@
+@use 'variables' as *;
+@use 'mixins' as *;
+
+// Global component classes shared by the pages.
+// Form-control rules (`.form-control` / `.form-select` / `.form-label`) live in `styles.scss`.
+
+// --- Layout ---------------------------------------------------------------
+
+.page-header {
+  @include flex-between;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+
+  .header-content {
+    .page-title {
+      display: flex;
+      align-items: center;
+      gap: $spacing-sm;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0 0 $spacing-xs 0;
+
+      i {
+        color: var(--primary-gold);
+      }
+    }
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    flex-wrap: wrap;
+  }
+}
+
+// --- Buttons (base for `app-button`'s inner `.btn`) ------------------------
+
+.btn {
+  @include btn-base;
+}
+
+// --- Forms ------------------------------------------------------------------
+
+.field {
+  display: grid;
+  gap: $spacing-2xs;
+
+  label {
+    color: var(--text-secondary);
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+
+  input,
+  select,
+  textarea {
+    width: 100%;
+    padding: $spacing-sm $spacing-md;
+    border-radius: $radius-md;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    transition: $transition-fast;
+
+    &:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--primary-gold) 65%, white);
+      outline-offset: 2px;
+      border-color: var(--primary-gold);
+    }
+  }
+
+  .hint {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  .error {
+    color: var(--accent-red);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+}
+
+// --- Cards & badges ---------------------------------------------------------
+
+.stat-card {
+  background: transparent;
+  border-radius: $radius-sm;
+  padding: $spacing-md;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  transition: $transition-base;
+  border: 1px solid var(--border);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: $radius-full;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-on-accent);
+}
+
+// --- Text utilities ---------------------------------------------------------
+
+.mono {
+  font-family: $font-family-mono;
+  font-size: 0.85em;
+}
+
+mark {
+  background: color-mix(in srgb, var(--primary-gold) 28%, transparent);
+  padding: 0 0.08em;
+  border-radius: 0.25em;
+  color: inherit;
+}
+
+// --- State blocks & spinners ----------------------------------------------
+
+.loading-state,
+.empty-state {
+  @include flex-center;
+  flex-direction: column;
+  gap: $spacing-md;
+  padding: $spacing-2xl;
+  color: var(--text-muted);
+  text-align: center;
+
+  i {
+    font-size: 2.5rem;
+    opacity: 0.5;
+  }
+
+  p {
+    margin: 0;
+    color: inherit;
+  }
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary-gold);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

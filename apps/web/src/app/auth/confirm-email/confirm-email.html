@@ -1,0 +1,21 @@
+<section class="auth-card">
+  <h1 class="auth-title">Confirm the email change</h1>
+
+  @if (error()) {
+    <p class="auth-error" role="alert">{{ error() }}</p>
+  }
+
+  @if (done(); as step) {
+    @if (step.changed) {
+      <p class="auth-ok" role="status">Your email is now {{ step.email }}.</p>
+    } @else {
+      <p class="auth-ok" role="status">Approved. Now open the link we sent to {{ step.email }} to confirm it is yours.</p>
+    }
+    <p class="auth-switch"><a routerLink="/profile">Back to your profile</a></p>
+  } @else if (missing) {
+    <p class="hint">This page needs the link from the confirmation email. Ask for a new one on your profile.</p>
+  } @else {
+    <p class="hint">Only confirm if you asked for this change from your profile.</p>
+    <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="confirm()">Confirm</button>
+  }
+</section>

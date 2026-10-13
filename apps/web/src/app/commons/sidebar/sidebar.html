@@ -1,0 +1,33 @@
+<aside class="sidebar" [class.expanded]="isExpanded()">
+  <div class="sidebar-header">
+    <a routerLink="/" class="sidebar-brand" (click)="onItemClick()" [title]="isExpanded() ? '' : 'Demo Base'">
+      <i class="bi bi-shield-check"></i>
+      <span class="nav-label">Demo Base</span>
+    </a>
+    <button class="sidebar-toggle" (click)="toggleSidebar()" [attr.aria-expanded]="isExpanded()" aria-label="Toggle sidebar">
+      <i class="bi" [class.bi-chevron-right]="!isExpanded()" [class.bi-chevron-left]="isExpanded()"></i>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    @for (item of menuItems(); track item.label) {
+      <a
+        class="nav-item"
+        [routerLink]="item.route"
+        routerLinkActive="active"
+        (click)="onItemClick()"
+        [title]="item.label">
+        <i class="bi {{ item.icon }} nav-icon"></i>
+        <span class="nav-label">{{ item.label }}</span>
+      </a>
+    }
+  </nav>
+</aside>
+
+<!-- Backdrop for mobile -->
+<div
+  class="sidebar-backdrop"
+  [class.active]="isExpanded()"
+  (click)="toggleSidebar()"
+  aria-hidden="true">
+</div>

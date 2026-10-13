@@ -1,0 +1,26 @@
+// Selective Bootstrap imports (global stylesheet, see angular.json `styles`).
+// Full bootstrap.min.css (~190KB) replaced with ~60KB of needed modules.
+
+// Required Bootstrap infrastructure
+@import 'bootstrap/scss/functions';
+@import 'bootstrap/scss/variables';
+@import 'bootstrap/scss/variables-dark';
+@import 'bootstrap/scss/maps';
+@import 'bootstrap/scss/mixins';
+@import 'bootstrap/scss/utilities';
+
+// Core layout
+@import 'bootstrap/scss/root';
+@import 'bootstrap/scss/reboot';
+
+// Components used by the pages
+@import 'bootstrap/scss/forms';
+@import 'bootstrap/scss/buttons';
+@import 'bootstrap/scss/badge';
+@import 'bootstrap/scss/spinners';
+
+// Utilities API (generates responsive utilities)
+@import 'bootstrap/scss/utilities/api';
+
+// Helpers
+@import 'bootstrap/scss/helpers';

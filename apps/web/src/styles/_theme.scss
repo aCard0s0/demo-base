@@ -1,0 +1,111 @@
+@use 'variables' as *;
+
+:root,
+[data-theme="light"] {
+  --bg-primary: #{$light-bg-primary};
+  --bg-secondary: #{$light-bg-secondary};
+  --bg-tertiary: #{$light-bg-tertiary};
+  --border: #{$light-border};
+  --border-dark: #{$light-border-dark};
+  --text-primary: #{$light-text-primary};
+  --text-secondary: #{$light-text-secondary};
+  --text-muted: #{$light-text-muted};
+  --text-on-accent: #{$text-on-accent};
+
+  --card-bg: #{$card-bg};
+  --card-border: #{$card-border};
+
+  --shadow-sm: #{$shadow-sm};
+
+  // Bootstrap reads its own variables, not ours. `.card` sets `color: var(--bs-body-color)` and
+  // `.text-muted` reads `--bs-secondary-color`, so any text that only inherits inside a card came out
+  // #212529 in the dark theme. Alias them here, per theme, so bootstrap components follow the tokens.
+  --bs-body-color: var(--text-primary);
+  --bs-emphasis-color: var(--text-primary);
+  --bs-body-bg: var(--bg-primary);
+  --bs-secondary-color: var(--text-secondary);
+  --bs-tertiary-color: var(--text-muted);
+  --bs-border-color: var(--border);
+  --bs-card-color: var(--text-primary);
+
+  --primary-gold: #{$primary-gold};
+  --primary-dark: #{$primary-dark};
+  --primary-gold-text: #{$primary-gold-text};
+  --accent-red: #{$accent-red};
+  --accent-info: #{$accent-info};
+  --accent-emerald: #{$accent-emerald};
+  --accent-orange: #{$accent-orange};
+
+  // Filled surfaces and the foreground that goes on them — see the note in _variables.scss.
+  // --text-on-fill is the same value in both themes, unlike --text-on-accent above.
+  --accent-red-fill: #{$accent-red-fill};
+  --accent-emerald-fill: #{$accent-emerald-fill};
+  --accent-orange-fill: #{$accent-orange-fill};
+  --text-on-fill: #{$text-on-fill};
+
+  // Text on a faint tint of the same accent — darkened here, because a tint pulls this theme's
+  // near-white bases towards the accent. See the note in _variables.scss.
+  --accent-red-text: #{$accent-red-text};
+  --accent-emerald-text: #{$accent-emerald-text};
+  --accent-info-text: #{$accent-info-text};
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #111720;
+  --bg-secondary: #171e29;
+  --bg-tertiary: #202836;
+  --border: #303848;
+  --border-dark: #4a5366;
+  --text-primary: #ece4d7;
+  --text-secondary: #bdb19d;
+  --text-muted: #9a8f7c;
+  --text-on-accent: #16120b;
+
+  --card-bg: #171e29;
+  --card-border: #303848;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+
+  // Bootstrap reads its own variables, not ours. `.card` sets `color: var(--bs-body-color)` and
+  // `.text-muted` reads `--bs-secondary-color`, so any text that only inherits inside a card came out
+  // #212529 in the dark theme. Alias them here, per theme, so bootstrap components follow the tokens.
+  --bs-body-color: var(--text-primary);
+  --bs-emphasis-color: var(--text-primary);
+  --bs-body-bg: var(--bg-primary);
+  --bs-secondary-color: var(--text-secondary);
+  --bs-tertiary-color: var(--text-muted);
+  --bs-border-color: var(--border);
+  --bs-card-color: var(--text-primary);
+
+  --primary-gold: #e0bf75;
+  --primary-dark: #c79b44;
+  --primary-gold-text: #e0bf75;
+  --accent-red: #ef7b70;
+  --accent-info: #7cb2ff;
+  --accent-emerald: #57c6a0;
+  --accent-orange: #efb156;
+
+  // Filled surfaces under white text. Darker than the dark-theme accents above, not lighter: the
+  // accents are lightened to read as foregrounds against a dark page, which is the opposite of what a
+  // fill behind white text needs. See the note in _variables.scss.
+  --accent-red-fill: #c1443a;
+  --accent-emerald-fill: #1f7a5e;
+  --accent-orange-fill: #9a6410;
+  // Deliberately NOT flipped to a dark foreground the way --text-on-accent is above: the fills are
+  // darkened here, not lightened, so the light foreground is the one that passes.
+  --text-on-fill: #{$text-on-fill};
+
+  // Text on a faint tint of the same accent. These are the raw accents, unlike in light: the accents are
+  // already lightened for a dark page, so the pairing passes as-is — 5.13:1 or better at the 16% tint the
+  // tokens are cut for. Aliased rather than repeated so the two can never drift apart.
+  //
+  // Red is the exception. It is the darkest of the four here, and its own 16% tint over `--bg-tertiary`
+  // takes it to 4.27:1, so it gets a hair more lightness (4.60:1) instead of an alias.
+  --accent-red-text: #f0857b;
+  --accent-emerald-text: var(--accent-emerald);
+  --accent-info-text: var(--accent-info);
+
+  color-scheme: dark;
+}

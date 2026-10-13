@@ -1,0 +1,275 @@
+# agent-service
+
+User-owned agents, the MCP servers each may use, and the permission that is enforced on every tool call.
+Port **9083**.
+
+An agent is a name, instructions, a list of MCP servers each marked **READ** or **WRITE**, and one setting
+for how far it may reach into its owner's *other* agents. No model runs here. Each agent **is an MCP
+server**, at `POST /mcp?agent=<id>`: Claude Code, Cursor or any MCP client connects to it and is offered
+exactly the tools those permissions allow; every tool it calls is checked again, against the row as it is in
+the database at that moment, before anything is proxied on. What it did -- and what it was refused -- is
+written to the agent's activity log, which the page shows.
+
+It verifies tokens in process against auth-service's JWKS and never calls auth-service per
+request -- except to mint an agent token, once, when the owner asks. It is the only service that writes to
+the `agent` database.
+
+## Packages
+
+```
+agent/     AgentService  AgentController  ServerUrls  AuthHeaderCrypto  AuthHeaderMigration
+  entities/  Agent  AgentMcpServer  Access  OthersAccess  AgentRepository
+  dto/       NewAgent  UpdateAgent  NewMcpServer  UpdateMcpServer  AgentResponse  McpServerResponse
+activity/  Activity  ActivityRepository  ActivityLog  ActivityResponse
+mcp/       AgentMcpEndpoint (the /mcp endpoint and its handler)  McpTools  AgentTools  AccessDenied  ToolResult  ToolListCache
+token/     AgentTokens   (JwtVerifier, Revocations and Caller come from the shared libs/auth-client module)
+stats/     StatsController  PublicStats
+support/   AgentExceptionAdvice
+```
+
+`mcp` depends on `agent` and `activity`; `agent` depends on `activity` and `token`; nothing points back.
+Inside `agent`, `entities` holds what is stored (the two enums included, since the rows carry them) and `dto`
+what crosses the API; `dto` may import `entities`, never the other way round.
+`com.demo.auth.client` is the [`../../libs/auth-client`](../../libs/auth-client/README.md) module, the shared token verifier.
+`ServerUrls` is the `UrlPolicy` of [`../../libs/outbound-urls`](../../libs/outbound-urls/README.md), fed the trusted-URL
+property; `AuthHeaderCrypto` and `AuthHeaderMigration` are the `EncryptedText` converter and the column migration of
+[`../../libs/jpa-crypto`](../../libs/jpa-crypto/README.md), bound to `agents.auth-header-key` and the `auth_header` column.
+`Bad.request` and the `{error}` advice come from [`../../libs/web-errors`](../../libs/web-errors/README.md).
+`AgentService` is the one place that decides whose agents a caller sees, and both the REST API and the tools
+one agent uses on another go through it.
+
+## Who owns what
+
+Agents belong to the user id in the token's `sub`, and **only** to it: there is no role that sees
+everybody's agents, an admin included. Another user's agent id comes back **404, not 403**, from every
+endpoint, from every agent tool, and from `/mcp`, so neither answer says whether it exists.
+
+An agent acts **as its owner**. An MCP client connects with either the owner's own login token or an **agent
+token**: minted by auth-service on `POST /api/agents/{id}/token`, with the owner as `sub`, role `AGENT`, the
+agent's id in an `agent` claim, and a 30-day life. `/mcp` accepts a token when its subject owns the agent
+and, for an agent token, the claim names that very agent -- which also lets an agent token connect to plain
+`/mcp` with no `agent=` parameter; a login token must say which agent it means. **Revoke tokens** on the
+page (`POST /api/agents/{id}/token/revoke`) kills every token made for that one agent: auth-service bumps
+the agent's own version, the token's `agentVer` falls behind it, and every service refuses it within its
+ten-second poll of the revocation feed. The owner's login and their other agents are untouched. Whatever token the client connected with is what a
+server row marked *forward caller token* receives as its `Authorization` header -- which is how one of the
+deployment's own servers knows whose data to show, and why a READ agent cannot see anybody else's. That token is the
+owner's whole authority, so **it is forwarded only to the deployment's own servers** (`agents.trusted-server-urls`): marking any other row to forward is a 400 on save, and `McpTools` applies the
+same rule at the moment of use, so a URL dropped from the trusted list since cannot be sent it either. A
+server an owner typed in gets a stored `authHeader` of its own instead. Agents are not
+users; the `AGENT` role lives only on these tokens, and **every `/api` endpoint in every service answers it
+403**. Here, an agent token that could edit agents would widen its own access or mint itself fresh tokens,
+the very thing the agent tools refuse; at another MCP-serving service it would skip the READ/WRITE gate
+below and the activity log; at auth-service it could change its owner's password. Its one way in is `/mcp`,
+and the only places it is good downstream are the `/mcp` endpoints agent-service forwards it to.
+
+## The permission rule
+
+Two levels, one rule, enforced in `McpTools`:
+
+| | offered on `tools/list` | allowed on `tools/call` |
+|---|---|---|
+| **READ** | only the tools that only read, see below | the same |
+| **WRITE** | every tool the server lists | every tool |
+
+Which tools "only read" depends on whether the deployment trusts the server:
+
+| server | READ keys on |
+|---|---|
+| trusted: on `agents.trusted-server-urls` | the server's own MCP annotation, `readOnlyHint: true`; a tool with no annotation is taken to **write** |
+| any other, which an owner typed in | the owner's own list, `readOnlyTools` on the server row; the annotation is ignored, and an empty list means READ offers **nothing** |
+
+A server an owner adds can annotate anything it likes, so its word is only taken when the deployment vouches
+for it. Responses carry `trusted` per server so the page knows which rule applies.
+
+Two checks on purpose. `tools/list` is filtered by the access each row has, so a READ server's writing tools
+are not even described to the connecting agent. Each `tools/call` then re-reads the row: an owner who flips a
+server to READ, or removes it, while an agent is connected is obeyed from its next call, and an agent that
+calls a tool it was never offered is refused all the same.
+
+What is checked against the row is the server's **raw listing**, which `ToolListCache` keeps for 15 seconds
+per URL and credential -- a SHA-256 of the forwarded token or stored header, never the credential itself --
+so `tools/list` does not connect to every server each time and `tools/call` does not list before it calls.
+The cache holds only what the server said its tools are; the URL policy runs before it is consulted and the
+permission check after, from the row as it is right now, so a cached listing can neither extend a permission
+nor skip the connect-time check. A tool the server adds or drops shows up within the 15 seconds. A refusal becomes an `isError` tool result the
+agent can read and a `tool_denied` line in the log.
+
+A result that is allowed is passed through **whole**: the content list -- text, images, audio, embedded
+resources, resource links -- and any `structuredContent` reach the connecting agent exactly as the server
+produced them, MIME types and bytes included. Only the activity log flattens it, to the text parts plus a
+`[image image/png]`-style marker for anything else.
+
+Tool names reach the client as `<server>__<tool>`, so two servers with the same tool cannot collide; server
+names are therefore short, lower-case and unique per agent.
+
+## Where a server may point
+
+agent-service POSTs to the servers an owner attaches, from inside the compose network -- where the database
+and auth-service's `/internal` endpoints live. `ServerUrls` -- the `UrlPolicy` of
+[`libs/outbound-urls`](../../libs/outbound-urls/README.md), fed the property below -- is the rule that keeps
+an owner's URL from pointing it there:
+
+- **The deployment's own servers pass by name**: `agents.trusted-server-urls`, compared exactly as
+  written (a different port or path on the same host is not the trusted server).
+  They are private addresses by design.
+- **Any other URL** must be `http(s)`, name a host with a dot in it -- a bare name is a compose service, or
+  `localhost` -- and resolve **only** to public addresses: no loopback, any-local, private (10/8, 172.16/12,
+  192.168/16), link-local (169.254/16, where the cloud metadata address 169.254.169.254 lives, and fe80::/10),
+  carrier-grade NAT (100.64/10), unique-local (fc00::/7) or multicast address. An IPv4-mapped IPv6 literal is
+  judged as the IPv4 address it wraps; a name that does not resolve is refused, not deferred.
+- **Checked twice.** On save, as a 400 with the reason, so nothing private is ever stored; and again right
+  before every connection, against what the name resolves to at that moment, so a name that was public when
+  saved and points somewhere private since (DNS rebinding) is refused on `tools/list` (the server is skipped
+  and logged as `could not connect: refused: …`) and on `tools/call` (an error result). Redirects are never
+  followed, so a public server cannot answer 302 to a private address either.
+
+## Other agents
+
+`othersAccess` on each agent gates seven built-in tools (`AgentTools`), scoped to the **same owner**:
+
+| needs | tools |
+|---|---|
+| READ or WRITE | `list_agents` · `get_agent` · `get_agent_activity` |
+| WRITE | `update_agent` · `add_mcp_server` (with an optional `readOnlyTools` list) · `set_mcp_access` · `remove_mcp_server` |
+
+It is re-read from the database before every call like the server access is. An agent may **never change
+its own configuration**, whatever its level: with that door open, one `set_mcp_access` call would be all the
+escalation it took. Changes an agent makes are logged on the agent it changed, prefixed
+`by agent '<name>' (#<id>): `, and the call itself on the agent that made it.
+
+## Activity
+
+Plain text lines, newest first, a hundred at a time, deleted with the agent:
+
+| kind | when |
+|---|---|
+| `connected` | an MCP client sent `initialize`: its name and version |
+| `tool_call` | a tool ran: `github__list_issues {} -> ok: …` or `-> error: …`, text as it is and `[image image/png]`, `[structured {…}]` for the rest; also a server that could not be reached |
+| `tool_denied` | a tool was refused and why: `github__create_issue: needs WRITE on server 'github' (has READ)` |
+| `config_changed` | anything edited, by the owner or by another agent; also `agent token issued` and `agent tokens revoked` |
+
+## The MCP endpoint
+
+`POST /mcp?agent=<id>`, MCP Streamable HTTP, **stateless**: no session id, no event stream, nothing kept
+between requests. Every request carries the token and the agent id and re-reads the agent, which is what
+makes a change on the page bite on the very next call. The web proxy forwards `/mcp` as-is, so from outside
+the URL is `http://localhost:3000/mcp?agent=<id>`.
+
+```bash
+claude mcp add --transport http my-agent "http://localhost:3000/mcp?agent=<id>" --header "Authorization: Bearer <token>"
+```
+
+The handler (`AgentMcpEndpoint.Handler`) is written out rather than built from the SDK's static tool list,
+because the tools differ per agent and per request. It answers `initialize` (the agent's instructions go in
+the result's `instructions`, so the connecting agent reads them first), `ping`, `tools/list` and
+`tools/call`; anything else is JSON-RPC *method not found*. A bad token, a missing `agent` parameter or an
+agent that is not the caller's come back as JSON-RPC errors, which is what the client can show its user.
+
+The query parameter rather than a path segment: the SDK's servlet transport matches the request URI against
+one fixed endpoint.
+
+## Endpoints
+
+| Method | Path | Body / notes |
+|---|---|---|
+| GET | `/api/agents` | the caller's agents, with their servers |
+| POST | `/api/agents` | `{name, instructions?, othersAccess?}` -- starts with no servers |
+| GET | `/api/agents/{id}` | |
+| PATCH | `/api/agents/{id}` | `{name?, instructions?, othersAccess?}` -- only the fields sent change |
+| DELETE | `/api/agents/{id}` | and its activity |
+| POST | `/api/agents/{id}/servers` | `{name, url, access, forwardCallerToken?, authHeader?, readOnlyTools?}`; `forwardCallerToken` only on a trusted URL |
+| PATCH | `/api/agents/{id}/servers/{sid}` | `{name?, url?, access?, forwardCallerToken?, authHeader?, readOnlyTools?}`; an empty `authHeader` clears it, an empty `readOnlyTools` marks none |
+| DELETE | `/api/agents/{id}/servers/{sid}` | |
+| GET | `/api/agents/{id}/activity` | newest first, at most 100 |
+| POST | `/api/agents/{id}/token` | → `{token}`: a 30-day agent token, shown once, never stored; 502 if auth-service is down |
+| POST | `/api/agents/{id}/token/revoke` | kills every token made for this agent; the owner's login and other agents live on; 502 if auth-service is down |
+| POST | `/mcp?agent={id}` | MCP Streamable HTTP, see above |
+| GET | `/api/public/agents/stats` | `{agents}` -- no token |
+| GET | `/actuator/health` | `{"status":"UP"}` -- no token, no detail; the compose healthcheck. Outside `/api`, so the proxy never forwards it |
+
+A server's stored `authHeader` is never returned; responses carry `hasAuthHeader` instead, plus `trusted`
+and the `readOnlyTools` list. Rejections come back as `{"error": "..."}` like everywhere else. The limits on a
+body -- name required, column widths, the server-name alphabet -- are the annotations on the DTO records,
+checked by `AgentService` rather than the controller so the tools one agent uses on another are held to the
+same rule; a violation is a 400 whose `error` is the annotation's own sentence.
+
+The header is **encrypted at rest**, AES-256-GCM, by a JPA converter (`AuthHeaderCrypto`, the `EncryptedText` of
+[`libs/jpa-crypto`](../../libs/jpa-crypto/README.md)): the entity reads
+and writes plain text and nothing else in the service knows. The key is `agents.auth-header-key`
+(`AGENTS_AUTH_HEADER_KEY` in `.env`); blank refuses to start here too, rather than quietly storing plain text.
+Each value is `v1:` plus a fresh nonce and the ciphertext, so equal headers never look alike on disk and a
+tampered row fails to decrypt rather than coming back wrong. A row written before encryption existed is read
+as it is and rewritten by `AuthHeaderMigration` at the next startup. Changing the key makes existing headers
+unreadable, so it belongs with the database.
+
+## Configuration
+
+| Property | Environment | Default |
+|---|---|---|
+| `server.port` | `SERVER_PORT` | `9083` |
+| `auth.jwks-uri` | `AUTH_JWKS_URI` | `http://localhost:9081/api/jwks.json` |
+| `auth.token-versions-uri` | `AUTH_TOKEN_VERSIONS_URI` | `http://localhost:9081/internal/token-versions` |
+| `auth.agent-tokens-uri` | `AUTH_AGENT_TOKENS_URI` | `http://localhost:9081/internal/agent-tokens`; `/{id}/revoke` under it is where a per-agent revoke goes |
+| `auth.internal-secret` | `AUTH_INTERNAL_SECRET` | `dev-internal-secret` -- sent as `X-Internal-Secret` when asking for a token; set it in `.env` |
+| `agents.auth-header-key` | `AGENTS_AUTH_HEADER_KEY` | `dev-auth-header-key` -- encrypts stored authorization headers; blank refuses to start; set it in `.env` |
+| `spring.datasource.*` | `SPRING_DATASOURCE_*` | `jdbc:postgresql://localhost:5432/agent`, `agent` / `agent` |
+| `agents.trusted-server-urls` | `AGENTS_TRUSTED_SERVER_URLS` | `http://localhost:9082/mcp` (compose: `http://todo-service:9082/mcp`); comma separated, the deployment's own servers an owner may attach by their private name |
+
+## Schema
+
+Liquibase owns it: [`src/main/resources/db/changelog`](src/main/resources/db/changelog), a master changelog
+including one formatted-SQL file per change -- `001-init` the tables, `002-agent-activity-index` the activity
+index -- and Hibernate only **validates** the entities against what it finds (`ddl-auto=validate`). A database
+that already has the tables, built by the `ddl-auto=update` of earlier versions or by the Flyway migrations that
+came before Liquibase, has `1-init` marked ran by its precondition rather than run, and picks up from `2`. A new
+column is a new file under `changes/`, included from the master, never an entity change alone: the context
+refuses to start on a mismatch, which `PostgresIntegrationTests` proves before compose does. The SQLite-backed
+tests switch Liquibase off and let Hibernate build their throwaway schema.
+
+## Limitations, on purpose
+
+- **The connect-time URL check resolves the name, then the HTTP client resolves it again.** The JVM caches a
+  positive lookup for 30 seconds, so the two agree in practice; pinning the connection to the checked
+  address needs a custom resolver on the client. The connecting token is forwarded only to servers
+  explicitly marked for it, and only when they are the deployment's own.
+- **Every `tools/call` still reconnects** to the one downstream server: initialize, call, close. The listing
+  it needs comes from the 15-second cache, so two round trips rather than three; keeping the connection open is
+  the upgrade if latency ever matters. The cache is a Caffeine cache: entries expire after the 15 seconds and the
+  least recently used go first past a thousand entries. A listing loads outside it, so a slow server holds up no
+  other; two requests missing the same server at once may both connect.
+- **A per-agent revoke bites within ten seconds, not at once.** The other services poll the revocation feed
+  rather than ask auth-service per request, so a revoked agent token keeps working for up to one poll window.
+- **One encryption key, no rotation.** The `v1:` prefix on each stored header is what a second key version
+  would key on; today a changed key makes every stored header unreadable.
+- **The forwarded token is the owner's full authority.** A deployment server checks it like the REST API
+  does, so agent-service's READ/WRITE gate is the only thing between a READ agent and its writing tools. That is
+  the feature; it is also why the gate is checked on every call and never left to the connecting agent.
+
+## Running it alone
+
+```bash
+docker compose up -d db
+mvn -pl apps/agent-service spring-boot:run   # with auth-service up
+mvn -pl apps/agent-service test              # SQLite backed: needs nothing running; PostgresIntegrationTests wants Docker and skips without it
+```
+
+Tests: `AgentMcpEndpointTests` runs the permission rules end to end -- the real MCP client connects to `/mcp`
+as an external agent would, against a real MCP server mounted in the same context, reached once by a trusted
+URL and once by an untrusted one -- including a permission flipped between two calls, an agent trying to
+widen its own access, an untrusted server whose annotations are ignored in favour of the owner's list, and
+who may connect at all;
+including a server trusted when saved and refused at connect, a stored header reaching the server, and an
+image with structured content coming through unchanged; `AgentServiceTests` the ownership rules, the
+activity log, a private URL refused on add and on edit, the caller's token refused for an untrusted URL,
+column widths refused before the database sees them, and a header encrypted on disk, plain once loaded
+and migrated from a legacy row; `ToolListCacheTests` one listing
+per URL and credential within the TTL, a failure never cached, and a key that holds a hash rather than the
+token; `ServerUrlsTests` that the property feeds the trusted set; `AgentMcpHandlerTests` that a log line
+which cannot be written never turns a tool that ran into a failure the model retries; `ApiContractTests` the
+401, 404, token and validation shapes and the healthcheck; `ArchitectureTests` the package rules above, with
+ArchUnit; `PostgresIntegrationTests` the Liquibase changesets, Hibernate's validation of the entities against
+them, the one-statement log delete, the composite index and a legacy header row, against the real database
+in a throwaway container -- skipped, not failed, without Docker. The address rules are `UrlPolicyTests` in
+`../../libs/outbound-urls`, the crypto `EncryptedTextTests` in `../../libs/jpa-crypto`, and the token check
+`../../libs/auth-client`'s.

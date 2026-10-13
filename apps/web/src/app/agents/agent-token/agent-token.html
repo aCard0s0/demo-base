@@ -1,0 +1,49 @@
+<h2 class="section-title">Connecting a client</h2>
+<p class="hint">
+  MCP endpoint: <span class="mono">{{ mcpUrl() }}</span>. A client connects with your own sign-in token or with an
+  agent token: valid 30 days, for this agent's MCP endpoint and nothing else. For Claude Code, with the token filled
+  in once you create one:
+</p>
+<div class="field">
+  <label for="agent-command">Claude Code</label>
+  <input id="agent-command" class="mono" readonly [value]="claudeCommand()" autocomplete="off" spellcheck="false" />
+</div>
+<div class="row-actions">
+  <button type="button" class="btn btn-outline-secondary" (click)="copy('command')">
+    <i class="bi" [class.bi-clipboard]="copied() !== 'command'" [class.bi-clipboard-check]="copied() === 'command'" aria-hidden="true"></i>
+    {{ copied() === 'command' ? 'Copied' : 'Copy command' }}
+  </button>
+</div>
+
+@if (error()) {
+  <p class="auth-error" role="alert">{{ error() }}</p>
+}
+@if (notice()) {
+  <p class="auth-ok" role="status">{{ notice() }}</p>
+}
+
+@if (token()) {
+  <div class="auth-form">
+    <p class="auth-error" role="alert">
+      Copy this token now: it is shown only once and is not stored anywhere. Anyone holding it can use this agent's
+      tools as you until it expires or you revoke it.
+    </p>
+    <div class="field">
+      <label for="agent-token">Agent token</label>
+      <input id="agent-token" class="mono" readonly [value]="token()" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="row-actions">
+      <button type="button" class="btn btn-primary" (click)="copy('token')">
+        <i class="bi" [class.bi-clipboard]="copied() !== 'token'" [class.bi-clipboard-check]="copied() === 'token'" aria-hidden="true"></i>
+        {{ copied() === 'token' ? 'Copied' : 'Copy' }}
+      </button>
+      <button type="button" class="btn btn-outline-secondary" (click)="done()">Done, hide it</button>
+    </div>
+  </div>
+}
+<div class="row-actions">
+  @if (!token()) {
+    <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="mint()">Create agent token</button>
+  }
+  <button type="button" class="btn btn-outline-secondary" [disabled]="busy()" (click)="revoke()">Revoke tokens</button>
+</div>

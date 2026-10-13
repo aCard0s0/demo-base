@@ -1,0 +1,8 @@
+# Spring Boot's default changelog location. One file per change under changes/, applied in this order.
+databaseChangeLog:
+  - include:
+      file: changes/001-init.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/002-agent-activity-index.sql
+      relativeToChangelogFile: true

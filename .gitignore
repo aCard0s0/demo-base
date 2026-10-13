@@ -1,0 +1,11 @@
+target/
+.mvn/wrapper/maven-wrapper.jar
+.idea
+*.iml
+.vscode/
+
+# Real credentials for the local stack. .env.example is the committed stand-in.
+.env
+/compose.override.yaml
+/.claude/worktrees/
+.DS_Store

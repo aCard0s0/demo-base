@@ -1,0 +1,108 @@
+@use 'styles/variables' as *;
+
+// Laid over auth.scss (listed first): the same cards and messages, wider, and no page padding on the pieces
+// nested inside a page.
+:host {
+  padding: 0;
+}
+
+.agents-page {
+  padding: $spacing-2xl $spacing-md;
+  display: grid;
+  gap: $spacing-lg;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 72rem;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0 0 $spacing-md;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+}
+
+.item-list {
+  list-style: none;
+  margin: 0 0 $spacing-md;
+  padding: 0;
+  display: grid;
+  gap: $spacing-sm;
+
+  > li {
+    padding: $spacing-sm;
+    border: 1px solid var(--border);
+    border-radius: $radius-md;
+  }
+}
+
+.item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $spacing-xs;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  font-size: 0.875rem;
+}
+
+.activity {
+  font-size: 0.8rem;
+
+  time {
+    color: var(--text-muted);
+    margin-right: $spacing-xs;
+  }
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+  margin: 0 0 $spacing-md;
+  border-bottom: 1px solid var(--border);
+
+  button {
+    padding: $spacing-xs $spacing-sm;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--text-secondary);
+    font-weight: 600;
+
+    &[aria-selected='true'] {
+      color: var(--text-primary);
+      border-bottom-color: currentColor;
+    }
+  }
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+  margin: 0 0 $spacing-md;
+
+  input {
+    flex: 1;
+    min-width: 12rem;
+  }
+}

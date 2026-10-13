@@ -1,0 +1,111 @@
+<div class="agents-page">
+  <section class="auth-card">
+    <h1 class="auth-title">Agents</h1>
+    <p class="hint">
+      Each agent is an MCP server of its own: a client connects to it and is offered exactly the tools of the servers
+      you attach, each READ or WRITE.
+    </p>
+
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" [attr.aria-selected]="tab() === 'list'" (click)="open('list')">Agents</button>
+      <button type="button" role="tab" [attr.aria-selected]="tab() === 'new'" (click)="open('new')">New agent</button>
+      <button type="button" role="tab" [attr.aria-selected]="tab() === 'activity'" (click)="open('activity')">Activity</button>
+    </div>
+
+    @if (error()) {
+      <p class="auth-error" role="alert">{{ error() }}</p>
+    }
+
+    @switch (tab()) {
+      @case ('list') {
+        @if (list(); as agents) {
+          @if (agents.length) {
+            <ul class="item-list">
+              @for (a of agents; track a.id) {
+                <li>
+                  <div class="item-head">
+                    <a [routerLink]="['/agents', a.id]">{{ a.name }}</a>
+                    <span class="hint">
+                      @if (a.othersAccess !== 'NONE') {
+                        {{ a.othersAccess }} on your other agents ·
+                      }
+                      {{ a.servers.length }} {{ a.servers.length === 1 ? 'server' : 'servers' }}
+                    </span>
+                  </div>
+                  @if (a.servers.length) {
+                    <div class="hint">
+                      @for (s of a.servers; track s.id) {
+                        <span class="badge" [class.text-bg-warning]="s.access === 'WRITE'" [class.text-bg-secondary]="s.access === 'READ'">{{ s.name }} {{ s.access }}</span>
+                      }
+                    </div>
+                  }
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="hint">No agents yet.</p>
+          }
+        }
+      }
+
+      @case ('new') {
+        <form ngNativeValidate (ngSubmit)="create()" class="auth-form">
+          <div class="field">
+            <label for="name">Name</label>
+            <input id="name" name="name" [(ngModel)]="name" required maxlength="100" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="instructions">Instructions</label>
+            <textarea id="instructions" name="instructions" [(ngModel)]="instructions" rows="4" maxlength="8000"></textarea>
+            <span class="hint">What a connecting client reads first.</span>
+          </div>
+          <div class="field">
+            <label for="othersAccess">Access to your other agents</label>
+            <select id="othersAccess" name="othersAccess" [(ngModel)]="othersAccess">
+              @for (o of othersAccessChoices; track o.value) {
+                <option [value]="o.value">{{ o.label }}</option>
+              }
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary" [disabled]="busy()">Create agent</button>
+        </form>
+      }
+
+      @case ('activity') {
+        <div class="filters">
+          <input type="search" name="query" aria-label="Search activity" placeholder="Search tool, server, error…" [(ngModel)]="query" />
+          <select name="agent" aria-label="Agent" [(ngModel)]="agentFilter">
+            <option value="">All agents</option>
+            @for (a of list() ?? []; track a.id) {
+              <option [value]="a.id">{{ a.name }}</option>
+            }
+          </select>
+          <select name="kind" aria-label="Activity kind" [(ngModel)]="kind">
+            <option value="">All kinds</option>
+            @for (k of kinds; track k) {
+              <option [value]="k">{{ k }}</option>
+            }
+          </select>
+          <button type="button" class="btn btn-outline-secondary" (click)="loadActivity()">Refresh</button>
+        </div>
+        <p class="hint">The newest hundred lines of each agent, newest first.</p>
+        @if (activity()) {
+          @if (shown().length) {
+            <ul class="item-list activity">
+              @for (line of shown(); track line.id) {
+                <li>
+                  <time [attr.datetime]="line.at">{{ line.at | date: 'medium' }}</time>
+                  <a [routerLink]="['/agents', line.agentId]">{{ line.agentName }}</a>
+                  <span [class]="'badge ' + badge(line)">{{ line.kind }}</span>
+                  <div class="mono">{{ line.detail }}</div>
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="hint">Nothing matches.</p>
+          }
+        }
+      }
+    }
+  </section>
+</div>

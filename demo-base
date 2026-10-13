@@ -1,0 +1,376 @@
+#!/usr/bin/env bash
+# demo-base — the one script that runs this repo: build, test, run from source, and drive the compose stack.
+# Copying this repo to start another project? Rename this file and the DEMO_BASE_* prefix with it.
+#
+# HOW TO ADD A COMMAND (agents: read this before editing anything below)
+#  1. Add ONE row to the COMMANDS registry:  name|alias|args|summary. A namespaced
+#     command has a space in the name ("db shell"); "#Label" starts a section. That
+#     row is the ONLY place a command name may live — help, `<cmd> --help` and the
+#     dispatcher are generated from it. Naming a command twice here is a bug.
+#  2. Define cmd_<name>, spaces and dashes as underscores ("db shell" ->
+#     cmd_db_shell). Optional long help: cmd_<fn>_help.
+#  3. Bind arguments to named locals and validate ALL of them before the first side
+#     effect, so `restart --typo` cannot tear the stack down and then fail. Reject
+#     unknown flags; never accept-and-ignore an argument.
+#  4. Side effects go through `run` (free --dry-run/--verbose), destructive ones
+#     through `confirm` (free --yes, plus refusal on non-interactive stdin).
+#  Invariants: no logic in the dispatcher; one arg-parsing idiom (while/case/shift);
+#  targets are arguments to verbs (`./demo-base start web`, never `./demo-base web`); human text
+#  only via say/note/step/warn/die — stdout carries values, stderr carries prose.
+#  bash 3.2 (stock macOS): no associative arrays, no ${var,,}, no mapfile, and never a
+#  bare "${a[@]}" that may be empty — write ${a[@]+"${a[@]}"}.
+set -Eeuo pipefail
+# ── identity & repo root (survives symlinks into ~/bin) ──
+PROG="${0##*/}"; TAGLINE="build, test and run this repo: three Spring Boot services, an Angular web, one compose stack"
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  _d=$(cd -P "$(dirname "$SELF")" && pwd); SELF=$(readlink "$SELF")
+  case "$SELF" in /*) ;; *) SELF="$_d/$SELF" ;; esac
+done
+ROOT=$(cd -P "$(dirname "$SELF")" && pwd)
+cd "$ROOT"
+# ── config: every knob env-overridable, every name prefixed with the tool ──
+# Compose is run from the repo root with no -f, so it picks up compose.yaml, the local compose.override.yaml and
+# .env exactly as a bare `docker compose` typed here would. COMPOSE_PROJECT_NAME is compose's own knob.
+ENV_FILE="${DEMO_BASE_ENV_FILE:-$ROOT/.env}"
+SERVICES="db db-init auth-service mailpit todo-service agent-service web"   # compose targets
+DEV_TARGETS="auth-service todo-service agent-service web"                   # what `dev` can run from source
+SUITES="java web"
+DRY_RUN=""; ASSUME_YES=""; VERBOSE=""; CURRENT_CMD=""
+TARGETS=(); OPT_BUILD=""
+# ── output: colour only on a TTY; values on stdout, prose on stderr ──
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; YLW=$'\033[33m'; RST=$'\033[0m'
+else BOLD=''; DIM=''; RED=''; YLW=''; RST=''; fi
+say()  { printf '%s\n' "$*"; }
+note() { printf '%s%s%s\n' "$DIM" "$*" "$RST" >&2; }
+step() { printf '%s→ %s%s\n' "$BOLD" "$*" "$RST" >&2; }
+warn() { printf '%s%s: %s%s\n' "$YLW" "$PROG" "$*" "$RST" >&2; }
+die()  { printf '%s%s: %s%s\n' "$RED" "$PROG" "$1" "$RST" >&2; exit "${2:-1}"; }
+# exit codes: 0 ok · 1 runtime failure · 2 usage error · 3 missing dependency · 4 bad state
+on_err() { local rc=$?; printf '%s%s: unexpected failure at line %s (exit %s)%s\n' "$RED" "$PROG" "${1:-?}" "$rc" "$RST" >&2; exit "$rc"; }
+trap 'on_err $LINENO' ERR
+trap 'exit 130' INT; trap 'exit 143' TERM
+# ── command registry: the single source of truth ──
+COMMANDS=$(cat <<'REGISTRY'
+#Setup
+setup||[--force]|Prepare a fresh clone: .env, the local db port override, npm ci
+doctor|||Check Java, Node, Docker and config; say exactly what to fix
+#Develop
+build|||Build every jar and the web bundle (mvnw package, no tests)
+test||[suite...] [-- args]|Run the tests: java, web, or both (default); no stack needed
+dev||<service>|Run one service from source in the foreground (blocks; Ctrl-C stops)
+clean||[--all]|Delete build output (target/, dist/, .angular/); --all also node_modules
+#Stack
+start|up|[service...] [--build]|Start the compose stack, or only the named services, and wait for healthy
+stop||[service...]|Stop containers, leaving them in place
+restart||[service...] [--build]|Stop then start the same targets, re-reading .env and compose.yaml
+status|ps||Show the containers, their health and the ports really bound
+logs||[service...] [-f] [-n N] [--since T]|Print the last 100 log lines (or N); -f follows
+down||[-v]|Remove containers and network; -v (--volumes) deletes the database too
+db shell||[database]|Open psql in the db container (auth, todo, agent; default postgres)
+#Meta
+version|-V||Print the version
+help||[command]|Show this help, or the help for one command
+REGISTRY
+)
+reg()       { printf '%s\n' "$COMMANDS"; }
+reg_names() { reg | awk -F'|' 'NF>1 {print $1}'; }
+reg_field() { reg | awk -F'|' -v n="$1" -v f="$2" '$1==n {print $f; exit}'; }
+fn_of()     { printf 'cmd_%s' "$(printf '%s' "$1" | tr ' -' '__')"; }
+lookup() {                             # lookup <tok> [tok2] -> canonical name, or empty
+  local hit=""
+  if [ -n "${2:-}" ]; then hit=$(reg_names | grep -Fx -- "$1 $2" || true); fi
+  [ -n "$hit" ] || hit=$(reg_names | grep -Fx -- "$1" || true)
+  [ -n "$hit" ] || hit=$(reg | awk -F'|' -v a="$1" 'NF>1 && $2==a {print $1; exit}')
+  printf '%s' "$hit"
+}
+suggest() {
+  reg_names | awk -v w="$1" '{ s=0
+    if (index($0,w) || index(w,$0)) s=3; else if (substr($0,1,2)==substr(w,1,2)) s=2
+    if (s>b) { b=s; best=$0 } } END { if (b>0) print best }'
+}
+in_list() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
+valid_target() { in_list "$1" "$SERVICES"; }
+wants_help() { local a; for a in "$@"; do case "$a" in -h|--help) return 0 ;; --) break ;; esac; done; return 1; }
+
+usage() {
+  cat <<EOF
+${BOLD}$PROG${RST} — $TAGLINE
+
+Usage: ./$PROG [-n|--dry-run] [-y|--yes] [--verbose] <command> [args...]
+       ./$PROG <command> --help
+
+Commands:
+EOF
+  reg | awk -F'|' -v b="$BOLD" -v r="$RST" '
+    /^#/ { printf "\n%s%s%s\n", b, substr($0,2), r; next }
+    NF>1 { c=$1; if ($2!="") c=c ", " $2; printf "  %-18s %s\n", c, $4 }'
+  printf '\nServices: %s\nSuites:   %s\nConfig:   DEMO_BASE_ENV_FILE=%s  (also COMPOSE_PROJECT_NAME, NO_COLOR)\n' \
+    "$SERVICES" "$SUITES" "$ENV_FILE"
+}
+cmd_help() {
+  if [ $# -eq 0 ]; then usage; return 0; fi
+  local name fn
+  name=$(lookup "$1" "${2:-}")
+  if [ -z "$name" ]; then
+    local hint; hint=$(suggest "$1"); [ -z "$hint" ] || note "did you mean: ./$PROG help $hint"
+    die "no such command: $1" 2
+  fi
+  say "${BOLD}$PROG $name${RST} $(reg_field "$name" 3)"; say ""; say "  $(reg_field "$name" 4)"
+  fn="$(fn_of "$name")_help"
+  if declare -f "$fn" >/dev/null 2>&1; then say ""; "$fn"; fi
+}
+# ── preflight: never above the dispatcher — help must work with nothing installed ──
+have() { command -v "$1" >/dev/null 2>&1; }
+require_docker() {
+  have docker || die "docker is not on PATH — install Docker Desktop, then retry" 3
+  docker compose version >/dev/null 2>&1 || die "no 'docker compose' plugin — this needs Compose v2" 3
+  docker info >/dev/null 2>&1 || die "the Docker daemon is not running — start Docker Desktop" 3
+}
+java_major() { java -version 2>&1 | awk -F'"' '/version/ {split($2, v, "."); print v[1]; exit}'; }
+require_java() {
+  have java || die "java is not on PATH — install JDK 26 (e.g. sdk install java 26-tem)" 3
+  local v; v=$(java_major)
+  [ "${v:-0}" -ge 26 ] 2>/dev/null || die "java $v found, the build needs 26+ — ./$PROG doctor" 4
+}
+require_node() {
+  have npm || die "npm is not on PATH — install Node 24 (e.g. nvm install 24)" 3
+}
+require_node_modules() {
+  [ -d "$ROOT/apps/web/node_modules" ] || die "apps/web has no node_modules — run ./$PROG setup" 4
+}
+port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+run() { if [ -n "$DRY_RUN$VERBOSE" ]; then note "+ $*"; fi; if [ -n "$DRY_RUN" ]; then return 0; fi; "$@"; }
+confirm() {
+  if [ -n "$ASSUME_YES" ]; then return 0; fi
+  [ -t 0 ] || die "refusing to do this non-interactively — pass --yes if you mean it" 2
+  printf '%s%s [y/N] %s' "$YLW" "$*" "$RST" >&2; local reply=""; read -r reply || true
+  case "$reply" in y|Y|yes|YES) return 0 ;; *) die "aborted" 2 ;; esac
+}
+compose() { run docker compose "$@"; }
+mvnw() { run "$ROOT/mvnw" -B "$@"; }
+load_env() { if [ -f "$ENV_FILE" ]; then set -a; # shellcheck disable=SC1090
+  . "$ENV_FILE"; set +a; fi; }
+# ── shared parsing: one idiom, plus a per-command allow-list so nothing is ignored ──
+parse_targets() {                      # parse_targets "<allowed flags>" "$@"
+  local allowed=" $1 "; shift; TARGETS=(); OPT_BUILD=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -*) case "$allowed" in *" $1 "*) ;; *) die "unknown option: $1 (try ./$PROG $CURRENT_CMD --help)" 2 ;; esac
+          case "$1" in --build) OPT_BUILD=1 ;; esac ;;
+      *)  valid_target "$1" || die "unknown service: $1. Valid: $SERVICES" 2; TARGETS+=("$1") ;;
+    esac
+    shift
+  done
+}
+no_args() { [ $# -eq 0 ] || die "$CURRENT_CMD takes no arguments (got: $1)" 2; }
+# ── setup & diagnosis ──
+cmd_setup() {
+  local force=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1 ;;
+      *) die "unknown argument: $1 (try ./$PROG setup --help)" 2 ;;
+    esac
+    shift
+  done
+  require_node
+  if [ -f "$ENV_FILE" ]; then note "kept $ENV_FILE"
+  else step "seeding $ENV_FILE from .env.example"; run cp "$ROOT/.env.example" "$ENV_FILE"; fi
+  if [ -f "$ROOT/compose.override.yaml" ]; then note "kept compose.override.yaml"
+  else step "writing compose.override.yaml (db on 127.0.0.1:5432, for running services from source)"
+    if [ -z "$DRY_RUN" ]; then cat > "$ROOT/compose.override.yaml" <<'EOF'
+# Local-only access to Postgres, for the services run from source (./demo-base dev) or a DB client.
+# Bound to loopback on purpose: a bare "5432:5432" would expose the default passwords and bypass the host firewall.
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+EOF
+    fi
+  fi
+  if [ -d "$ROOT/apps/web/node_modules" ] && [ -z "$force" ]; then note "kept apps/web/node_modules (--force reinstalls)"
+  else step "installing web dependencies"; (cd "$ROOT/apps/web" && run npm ci --no-audit --no-fund); fi
+  say "ready — next: ./$PROG start"
+}
+cmd_setup_help() { say "  Never overwrites .env or compose.override.yaml, --force included; --force only redoes npm ci."; }
+cmd_doctor() {
+  no_args "$@"; local missing="" broken="" v
+  say "root      $ROOT"
+  if have java; then v=$(java_major)
+    if [ "${v:-0}" -ge 26 ] 2>/dev/null; then say "java      $v"; else warn "java      $v — the build needs 26+: sdk install java 26-tem"; broken=1; fi
+  else warn "java      missing — sdk install java 26-tem"; missing=1; fi
+  if have node; then v=$(node -v); case "$v" in v2[4-9]*|v[3-9]*) say "node      $v" ;; *) warn "node      $v — needs 24+: nvm install 24"; broken=1 ;; esac
+  else warn "node      missing — nvm install 24"; missing=1; fi
+  if have docker; then say "docker    $(docker --version 2>/dev/null)"; else warn "docker    missing — install Docker Desktop"; missing=1; fi
+  if have docker && ! docker compose version >/dev/null 2>&1; then warn "compose   v2 plugin missing — update Docker Desktop"; missing=1; fi
+  if have docker && ! docker info >/dev/null 2>&1; then warn "daemon    not running — start Docker Desktop"; broken=1
+  elif have docker; then say "daemon    running"; fi
+  if [ -f "$ENV_FILE" ]; then say "env       $ENV_FILE"; else note "env       none — every setting keeps its dev default (./$PROG setup seeds one)"; fi
+  if [ -d "$ROOT/apps/web/node_modules" ]; then say "web deps  installed"; else warn "web deps  missing — ./$PROG setup"; broken=1; fi
+  if [ -n "$missing" ]; then exit 3; fi
+  if [ -n "$broken" ]; then exit 4; fi
+  return 0
+}
+# ── develop ──
+cmd_build() { no_args "$@"; require_java; require_node
+  step "building every module"; mvnw package -DskipTests
+  say "jars: apps/*/target/*.jar · web: apps/web/dist/web/browser"; }
+cmd_test() {
+  local suites=() pass=() s
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --) shift; pass=("$@"); break ;;
+      -*) die "unknown option: $1 (flags for the runner go after --)" 2 ;;
+      *)  in_list "$1" "$SUITES" || die "unknown suite: $1. Valid: $SUITES" 2; suites+=("$1") ;;
+    esac
+    shift
+  done
+  [ ${#suites[@]} -gt 0 ] || suites=(java web)
+  for s in "${suites[@]}"; do
+    case "$s" in
+      java) require_java
+            if ! docker info >/dev/null 2>&1; then warn "Docker is not running: PostgresIntegrationTests will be skipped, not run"; fi
+            step "java tests"; mvnw test -pl '!apps/web' ${pass[@]+"${pass[@]}"} ;;
+      web)  require_node; require_node_modules
+            step "web tests"; (cd "$ROOT/apps/web" && run npm test -- --watch=false ${pass[@]+"${pass[@]}"}) ;;
+    esac
+  done
+}
+cmd_test_help() { say "  Suites: java (Maven, SQLite-backed; Postgres tests need Docker), web (Vitest)."
+                  say "  e.g. ./$PROG test java -- -pl apps/agent-service -am"; }
+cmd_dev() {
+  [ $# -eq 1 ] || die "dev takes exactly one service: $DEV_TARGETS" 2
+  local svc="$1"; in_list "$svc" "$DEV_TARGETS" || die "cannot run $svc from source. Valid: $DEV_TARGETS" 2
+  if [ "$svc" = web ]; then
+    require_node; require_node_modules
+    step "web on http://localhost:3000 (proxies /api and /mcp to the services on 9081-9083)"
+    cd "$ROOT/apps/web"; run npm start; return 0
+  fi
+  require_java
+  port_open 5432 || die "nothing on localhost:5432 — ./$PROG setup (for the port), then ./$PROG start db db-init" 4
+  load_env
+  step "$svc from source (.env loaded if present)"
+  mvnw -q package -DskipTests -pl "apps/$svc" -am
+  # ponytail: no reload on change for the Java services; Ctrl-C and rerun. spring-boot-devtools is the upgrade.
+  run java -jar "$ROOT/apps/$svc/target/$svc-0.0.1-SNAPSHOT.jar"
+}
+cmd_dev_help() { say "  Start the database first: ./$PROG start db db-init (with the port ./$PROG setup publishes)."
+                 say "  Services need each other too: auth-service first, then todo-service and agent-service."; }
+cmd_clean() {
+  local all=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --all) all=1 ;;
+      *) die "unknown argument: $1 (try ./$PROG clean --help)" 2 ;;
+    esac
+    shift
+  done
+  if [ -n "$all" ]; then confirm "also delete apps/web/node_modules? (./$PROG setup reinstalls it)"; fi
+  step "removing build output"
+  # Only regenerable files this repo produced: never containers, volumes, .env or anything git tracks.
+  run find "$ROOT/apps" "$ROOT/libs" -type d -name target -prune -exec rm -rf {} +
+  run rm -rf "$ROOT/apps/web/dist" "$ROOT/apps/web/.angular"
+  if [ -n "$all" ]; then run rm -rf "$ROOT/apps/web/node_modules"; fi
+  say "clean${all:+ --all} done"
+}
+cmd_clean_help() { say "  Containers and volumes are \`./$PROG down\`; this never touches them."; }
+# ── stack ──
+endpoints() {
+  local web mail
+  web=$(docker compose port web 80 2>/dev/null || true)
+  mail=$(docker compose port mailpit 8025 2>/dev/null || true)
+  if [ -n "$web" ]; then say "web:     http://$web"; fi
+  if [ -n "$mail" ]; then say "mailpit: http://$mail"; fi
+}
+do_up() { step "starting ${TARGETS[*]:-everything}"
+  compose up -d --wait ${OPT_BUILD:+--build} ${TARGETS[@]+"${TARGETS[@]}"}   # --wait health-gates
+  [ -n "$DRY_RUN" ] || endpoints; }
+cmd_start() { parse_targets "--build" "$@"; require_docker; do_up; }
+cmd_start_help() { say "  Idempotent: an unchanged, healthy stack is left alone. --build rebuilds the images first."; }
+cmd_stop() { parse_targets "" "$@"; require_docker; step "stopping ${TARGETS[*]:-everything}"
+  compose stop ${TARGETS[@]+"${TARGETS[@]}"}; }
+cmd_restart() { parse_targets "--build" "$@"; require_docker
+  compose stop ${TARGETS[@]+"${TARGETS[@]}"}; do_up; }
+cmd_restart_help() { say "  Unlike \`docker compose restart\`, this re-reads .env and compose.yaml."; }
+cmd_status() { no_args "$@"; require_docker
+  docker compose ps -a --format 'table {{.Service}}\t{{.Status}}\t{{.Ports}}'; endpoints; }
+cmd_logs() {
+  local follow="" tail="100" since="" f; TARGETS=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -f|--follow) follow=1 ;;
+      -n|--tail)   [ $# -ge 2 ] || die "-n needs a line count" 2; tail="$2"; shift ;;
+      --since)     [ $# -ge 2 ] || die "--since needs a time (10m, 2026-01-01T00:00:00)" 2; since="$2"; shift ;;
+      -*) die "unknown option: $1 (try ./$PROG logs --help)" 2 ;;
+      *)  valid_target "$1" || die "unknown service: $1. Valid: $SERVICES" 2; TARGETS+=("$1") ;;
+    esac
+    shift
+  done
+  case "$tail" in ''|*[!0-9]*) die "-n needs a number (got: $tail)" 2 ;; esac
+  require_docker; f=(logs --tail "$tail")
+  [ -z "$follow" ] || f+=(--follow); [ -z "$since" ] || f+=(--since "$since")
+  compose "${f[@]}" ${TARGETS[@]+"${TARGETS[@]}"}
+}
+# Three teardown verbs, never aliases of each other: stop halts, down removes the local
+# runtime, clean deletes build artifacts.
+cmd_down() {
+  local vols="" f
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -v|--volumes) vols=1 ;;   # -v is volumes here, as in compose; verbose is --verbose only
+      -*) die "unknown option: $1 (try ./$PROG down --help)" 2 ;;
+      *)  die "down takes no services (got: $1) — it removes the whole project" 2 ;;
+    esac
+    shift
+  done
+  require_docker
+  if [ -n "$vols" ]; then confirm "delete the database volume (every user, todo and agent)? this cannot be undone"; fi
+  f=(down --remove-orphans); [ -z "$vols" ] || f+=(--volumes)
+  compose "${f[@]}"; say "removed containers and network${vols:+, and the database volume}"
+}
+cmd_down_help() { say "  Halt without removing is \`./$PROG stop\`; build output is \`./$PROG clean\`."; }
+cmd_db_shell() {
+  [ $# -le 1 ] || die "db shell takes at most one database (got: $*)" 2
+  local db="${1:-postgres}"
+  in_list "$db" "postgres auth todo agent" || die "unknown database: $db. Valid: auth todo agent postgres" 2
+  require_docker; compose exec db psql -U postgres "$db"
+}
+# ── meta ──
+cmd_version() { no_args "$@"; local v
+  v=$(git describe --tags --always --dirty 2>/dev/null || true)
+  [ -n "$v" ] || v=$(awk -F'[<>]' '/<version>/ && ++n==2 {print $3; exit}' "$ROOT/pom.xml")
+  [ -n "$v" ] || die "cannot determine the version (no git, no pom version)" 1
+  say "$PROG $v"; say "contract: project-cli core verbs, level 2"; }
+# ── dispatcher: resolution only, no command logic ──
+main() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -n|--dry-run) DRY_RUN=1 ;;    -y|--yes)     ASSUME_YES=1 ;;
+      --verbose)    VERBOSE=1 ;;    -V|--version) shift; cmd_version "$@"; return 0 ;;
+      -h|--help)    usage; return 0 ;;
+      --) shift; break ;;
+      -*) warn "unknown global option: $1"; usage >&2; exit 2 ;;
+      *)  break ;;
+    esac
+    shift
+  done
+  if [ $# -eq 0 ]; then usage; return 0; fi    # bare invocation: help on stdout, exit 0
+  local name fn hint
+  name=$(lookup "$1" "${2:-}")
+  if [ -z "$name" ]; then
+    warn "unknown command: $1"
+    if valid_target "$1"; then note "'$1' is a service, not a command — try: ./$PROG start $1"; fi
+    hint=$(suggest "$1"); [ -z "$hint" ] || note "did you mean: ./$PROG $hint"
+    usage >&2; exit 2
+  fi
+  shift; case "$name" in *' '*) shift ;; esac  # a namespace consumes its second token
+  if wants_help "$@"; then                     # one place makes `<cmd> --help` universal
+    # shellcheck disable=SC2086  # deliberate split so "db shell" arrives as two words
+    cmd_help $name; return 0
+  fi
+  CURRENT_CMD="$name"; fn=$(fn_of "$name")
+  "$fn" "$@"
+}
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi

@@ -1,0 +1,226 @@
+@use 'styles/variables' as *;
+@use 'styles/mixins' as *;
+
+:host {
+  display: contents;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: $sidebar-width-collapsed;
+  height: 100vh;
+  background: var(--card-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: width $sidebar-layout-duration $sidebar-layout-easing;
+  z-index: 100;
+  overflow: hidden;
+
+  &.expanded {
+    width: $sidebar-width-expanded;
+
+    .sidebar-header {
+      flex-direction: row;
+    }
+
+    .nav-label {
+      opacity: 1;
+      max-width: 180px;
+      transform: translateX(0);
+      flex: 1 1 auto;
+    }
+  }
+}
+
+.sidebar-header {
+  min-height: $navbar-height;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-xs;
+  padding: $spacing-md $spacing-sm;
+}
+
+.sidebar-toggle {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: $radius-md;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: $transition-fast;
+  z-index: 10;
+
+  &:hover {
+    background: color-mix(in srgb, var(--primary-gold) 10%, transparent);
+    color: var(--primary-gold-text);
+    border-color: var(--primary-gold);
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary-gold) 70%, transparent);
+    outline-offset: 1px;
+  }
+
+  i {
+    font-size: 0.875rem;
+  }
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: $spacing-md $spacing-sm;
+  overflow-y: auto;
+  overflow-x: hidden;
+  @include custom-scrollbar;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  border-radius: $radius-md;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: $transition-fast;
+  white-space: nowrap;
+  width: 100%;
+
+  &:hover {
+    background: color-mix(in srgb, var(--primary-gold) 8%, transparent);
+    color: var(--primary-gold-text);
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary-gold) 70%, transparent);
+    outline-offset: -2px;
+  }
+
+  &.active {
+    background: color-mix(in srgb, var(--primary-gold) 14%, transparent);
+    color: var(--primary-gold-text);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-gold) 45%, transparent);
+
+    .nav-icon {
+      color: var(--primary-gold-text);
+    }
+  }
+}
+
+.nav-icon {
+  font-size: 1.25rem;
+  min-width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.nav-label {
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  transform: translateX(-4px);
+  transition: opacity 0.2s ease, max-width 0.25s ease, transform 0.25s ease;
+  flex: 0 0 auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  color: var(--primary-gold);
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-decoration: none;
+  width: 100%;
+  padding: $spacing-sm;
+  border-radius: $radius-md;
+  transition: $transition-fast;
+
+  &:hover {
+    background: color-mix(in srgb, var(--primary-gold) 8%, transparent);
+  }
+
+  i {
+    font-size: 1.5rem;
+    min-width: 24px;
+    text-align: center;
+  }
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+.sidebar:not(.expanded) {
+  .sidebar-header {
+    flex-direction: column;
+    justify-content: center;
+    gap: $spacing-sm;
+    padding-left: $spacing-xs;
+    padding-right: $spacing-xs;
+  }
+
+  .sidebar-brand,
+  .nav-item {
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    gap: 0;
+  }
+
+  .nav-item {
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+// Mobile Styles
+@media (max-width: $breakpoint-md) {
+  .sidebar {
+    transform: translateX(-100%);
+    width: $sidebar-width-expanded;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+
+    &.expanded {
+      transform: translateX(0);
+    }
+
+    .nav-label {
+      opacity: 1;
+      max-width: 180px;
+      transform: translateX(0);
+    }
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .sidebar-backdrop.active {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+  }
+}
+
+// Tablet adjustments
+@media (min-width: $breakpoint-md) and (max-width: $breakpoint-lg) {
+  .sidebar:not(.expanded) {
+    width: $sidebar-width-collapsed;
+  }
+}

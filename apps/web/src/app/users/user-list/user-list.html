@@ -1,0 +1,70 @@
+<div class="agents-page">
+  <section class="auth-card">
+    <h1 class="auth-title">Users</h1>
+    @if (admin()) {
+      <p class="hint">
+        A changed role or a suspension signs that user out everywhere; "Sign out everywhere" alone lets them sign
+        straight back in. Agents are their owner's alone, so none are listed here.
+      </p>
+    } @else {
+      <p class="hint">Only an admin can change a role, suspend, or sign a user out.</p>
+    }
+
+    @if (error()) {
+      <p class="auth-error" role="alert">{{ error() }}</p>
+    }
+    @if (notice()) {
+      <p class="auth-ok" role="status">{{ notice() }}</p>
+    }
+
+    @if (list(); as users) {
+      <ul class="item-list">
+        @for (u of users; track u.id) {
+          <li>
+            <div class="item-head">
+              <strong>{{ u.name }}</strong>
+              <span>
+                <span
+                  class="badge"
+                  [class.text-bg-warning]="u.role === 'ADMIN'"
+                  [class.text-bg-secondary]="u.role !== 'ADMIN'"
+                  >{{ u.role }}</span
+                >
+                @if (u.suspended) {
+                  <span class="badge text-bg-danger">suspended</span>
+                }
+                @if (u.id === me()) {
+                  <span class="badge text-bg-info">you</span>
+                }
+              </span>
+            </div>
+            <div class="mono">{{ u.email }}</div>
+            <div class="hint">{{ u.passwordSet ? 'Email and password' : 'Provider only' }}</div>
+            @if (admin() && u.id !== me()) {
+              <div class="row-actions">
+                <select
+                  class="role"
+                  name="role-{{ u.id }}"
+                  [attr.aria-label]="'Role of ' + u.email"
+                  [ngModel]="u.role"
+                  (ngModelChange)="setRole(u, $event)"
+                  [disabled]="busy()"
+                >
+                  @for (r of roles; track r) {
+                    <option [value]="r">{{ r }}</option>
+                  }
+                </select>
+                <button type="button" class="btn btn-outline-secondary" [disabled]="busy()" (click)="setSuspended(u)">
+                  {{ u.suspended ? 'Reactivate' : 'Suspend' }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary" [disabled]="busy()" (click)="revoke(u)">
+                  Sign out everywhere
+                </button>
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    }
+  </section>
+</div>

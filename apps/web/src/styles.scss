@@ -1,0 +1,29 @@
+// Global styles: the Bootstrap subset the pages rely on, the theme tokens, base and component classes.
+// The tokens key off data-theme="light" | "dark" on <html> (index.html). Fonts load via <link> in index.html.
+// Component stylesheets pull the partials they need: `@use 'styles/variables' as *;`.
+@use 'styles/bootstrap-custom';
+@use 'styles/variables' as *;
+@use 'styles/theme';
+@use 'styles/mixins' as *;
+@use 'styles/base' as *;
+@use 'styles/components' as *;
+@use 'styles/forms' as *;
+
+// --- Bootstrap overrides ----------------------------------------------------
+
+.form-control,
+.form-select {
+  @include compact-input;
+}
+
+.form-select {
+  @include compact-select;
+}
+
+.form-label {
+  @include compact-label;
+}
+
+.badge {
+  font-weight: 600;
+}

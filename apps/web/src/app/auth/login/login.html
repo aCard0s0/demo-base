@@ -1,0 +1,65 @@
+<section class="auth-card">
+  <h1 class="auth-title">{{ verifyToken ? 'Confirm your email' : signup ? 'Create an account' : 'Sign in' }}</h1>
+
+  @if (error()) {
+    <p class="auth-error" role="alert">{{ error() }}</p>
+  }
+  @if (notice()) {
+    <p class="auth-ok" role="status">{{ notice() }}</p>
+  }
+  @if (verifyToken) {
+    <p class="hint">Enter the password you chose when you signed up to finish creating your account.</p>
+  }
+
+  <form ngNativeValidate (ngSubmit)="submit()" class="auth-form">
+    @if (signup) {
+      <div class="field">
+        <label for="name">Name</label>
+        <input id="name" name="name" [(ngModel)]="name" required maxlength="255" autocomplete="name" />
+      </div>
+    }
+    @if (!verifyToken) {
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" [(ngModel)]="email" required maxlength="255" autocomplete="email" />
+      </div>
+    }
+    <div class="field">
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        [(ngModel)]="password"
+        required
+        [attr.minlength]="signup ? 8 : null"
+        [attr.autocomplete]="signup ? 'new-password' : 'current-password'" />
+      @if (signup) {
+        <span class="hint">At least 8 characters.</span>
+      }
+    </div>
+    <button type="submit" class="btn btn-primary" [disabled]="busy()">
+      {{ verifyToken ? 'Confirm and sign in' : signup ? 'Create account' : 'Sign in' }}
+    </button>
+  </form>
+
+  @if (providers().length) {
+    <div class="auth-divider"><span>or</span></div>
+    <div class="auth-providers">
+      @for (p of providers(); track p.key) {
+        <!-- A full-page navigation, not a fetch: the browser itself walks the provider's redirects. -->
+        <a class="btn btn-outline-secondary" [href]="'/api/oauth/' + p.key + '/start'">
+          <i [class]="'bi bi-' + (icons[p.key] ?? 'box-arrow-in-right')" aria-hidden="true"></i> Continue with {{ p.label }}
+        </a>
+      }
+    </div>
+  }
+
+  <p class="auth-switch">
+    @if (signup) {
+      Already have an account? <a routerLink="/login">Sign in</a>
+    } @else {
+      New here? <a routerLink="/signup">Create an account</a>
+    }
+  </p>
+</section>

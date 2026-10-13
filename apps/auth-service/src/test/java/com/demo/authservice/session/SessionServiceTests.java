@@ -1,0 +1,65 @@
+package com.demo.authservice.session;
+
+import com.demo.authservice.user.UserService;
+import org.junit.jupiter.api.Test;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import com.demo.authservice.RecordingMail;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+// Its own database file, so re-creating the schema cannot disturb another test class.
+@Import(RecordingMail.class)
+@SpringBootTest(properties = {
+        "spring.datasource.url=jdbc:sqlite:target/test-session.db",
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.liquibase.enabled=false",
+        // SQLite allows a single writer; one connection keeps Hibernate from tripping over itself.
+        "spring.datasource.hikari.maximum-pool-size=1",
+})
+class SessionServiceTests {
+
+    @Autowired
+    SessionService sessions;
+
+    @Autowired
+    UserService users;
+
+    @Test
+    void logsInWithTheRightPasswordAndNothingElse() {
+        RecordingMail.registered(users, "Ada", "ada@example.com", "correct-horse");
+
+        assertEquals("ada@example.com",
+                sessions.login("ada@example.com", "correct-horse").orElseThrow().user().getEmail());
+        assertTrue(sessions.login("ada@example.com", "wrong").isEmpty());
+        assertTrue(sessions.login("nobody@example.com", "correct-horse").isEmpty(),
+                "an unknown email must fail the same way a wrong password does");
+    }
+
+    @Test
+    void aNewPasswordWorksAndTheOldOneStopsWorking() {
+        var edna = RecordingMail.registered(users, "Edna", "edna@example.com", "edna-pass-01");
+        users.update(edna.getId(), "Edna Mode", "edna.mode@example.com", "edna-pass-01", "new-pass-007");
+        users.confirmEmailChange(RecordingMail.linkTo("edna.mode@example.com"));
+
+        assertTrue(sessions.login("edna.mode@example.com", "new-pass-007").isPresent(), "the new password must work");
+        assertTrue(sessions.login("edna.mode@example.com", "edna-pass-01").isEmpty(), "the old password must not");
+    }
+
+    @Test
+    void locksAnEmailOutAfterARunOfFailedLogins() {
+        RecordingMail.registered(users, "Katherine", "katherine@example.com", "johnson-1918");
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+            assertTrue(sessions.login("katherine@example.com", "wrong").isEmpty());
+        }
+
+        assertThrows(ResponseStatusException.class,
+                () -> sessions.login("katherine@example.com", "johnson-1918"),
+                "once locked out, even the correct password must not get through");
+    }
+}

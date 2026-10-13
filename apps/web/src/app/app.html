@@ -1,0 +1,7 @@
+<div class="app-layout" [class.sidebar-expanded]="isSidebarExpanded()">
+  <app-sidebar [(isExpanded)]="isSidebarExpanded" />
+  <div class="app-main-shell">
+    <app-navbar [isSidebarOpen]="isSidebarExpanded()" (sidebarToggle)="isSidebarExpanded.set(!isSidebarExpanded())" />
+    <main class="app-content" id="main-content"><router-outlet /></main>
+  </div>
+</div>
