@@ -70,6 +70,7 @@ logs||[service...] [-f] [-n N] [--since T]|Print the last 100 log lines (or N); 
 down||[-v]|Remove containers and network; -v (--volumes) deletes the database too
 db shell||[database]|Open psql in the db container (auth, todo, agent; default postgres)
 #Meta
+map sync|||Regenerate map/AGENTS.md and map/routing.md from map/CLAUDE.md
 version|-V||Print the version
 help||[command]|Show this help, or the help for one command
 REGISTRY
@@ -338,6 +339,11 @@ cmd_db_shell() {
   require_docker; compose exec db psql -U postgres "$db"
 }
 # ── meta ──
+cmd_map_sync() { no_args "$@"; local f
+  [ -f "$ROOT/map/CLAUDE.md" ] || die "no map/CLAUDE.md to copy" 4
+  for f in AGENTS.md routing.md; do run cp "$ROOT/map/CLAUDE.md" "$ROOT/map/$f"; done
+  say "map/AGENTS.md and map/routing.md now match map/CLAUDE.md"; }
+cmd_map_sync_help() { say "  The twins are generated: edit map/CLAUDE.md, then run this. Never hand-edit the twins."; }
 cmd_version() { no_args "$@"; local v
   v=$(git describe --tags --always --dirty 2>/dev/null || true)
   [ -n "$v" ] || v=$(awk -F'[<>]' '/<version>/ && ++n==2 {print $3; exit}' "$ROOT/pom.xml")

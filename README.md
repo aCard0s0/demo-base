@@ -116,7 +116,7 @@ refused; `docker compose up -d mailpit` and `SPRING_MAIL_HOST=localhost SPRING_M
 
 Postgres, with a database and a role per service (`auth`/`auth`, `todo`/`todo`, `agent`/`agent`,
 created by `docker/initdb.sql`), so no service can read another's tables even by accident. The credentials are
-development values and the `db` container publishes no port; change them before this goes anywhere real.
+development values and `db` publishes at most a loopback port (compose.override.yaml); change them first.
 
 auth-service and agent-service own their schema as Liquibase changesets (`src/main/resources/db/changelog`) and
 Hibernate only validates it; a new column is a new changeset, never an entity change alone. todo-service still
@@ -213,8 +213,8 @@ The two services answer "what role is this?" differently, on purpose:
 - **auth-service reads the user row** on every request, so a promotion or demotion bites at once, on a
   token the holder already has.
 - **todo-service reads the token's claim**, because asking auth-service per request is exactly what the
-  JWKS handoff exists to avoid. A role change lands there when the token is renewed -- within
-  `auth.token-ttl`, 30 minutes by default.
+  JWKS handoff exists to avoid. A role change also revokes the user's tokens, so it lands there within
+  the 10-second revocation poll, and the next token carries the new role.
 
 ### Suspending and revoking
 

@@ -1,8 +1,8 @@
 # auth-client
 
 auth-service's client half: the one copy of how a service checks a caller's token without asking
-auth-service. A plain jar, not a service: no port, no database, no main class. todo-service, agent-service
-and wallet-service depend on it; auth-service does not, because it is the side that mints.
+auth-service. A plain jar, not a service: no port, no database, no main class. agent-service
+depends on it; auth-service does not, because it is the side that mints.
 
 ```
 com.demo.auth.client   JwtVerifier   the Authorization header -> a Caller, or 401

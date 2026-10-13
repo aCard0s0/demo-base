@@ -2,7 +2,7 @@
 # Postgres alone, for running the services from the IDE: `docker compose up -d --wait db db-init` (with the port
 # compose.override.yaml publishes). Settings come from .env (see .env.example); anything unset keeps the
 # service's development default, so the stack starts with no .env at all -- fine on a laptop, wrong anywhere else.
-# Only the web publishes a port; the services and the database talk to each other over the compose network.
+# Only web and mailpit publish a port, both on loopback; the services and the database talk over the compose network.
 services:
   db:
     image: postgres:18-alpine

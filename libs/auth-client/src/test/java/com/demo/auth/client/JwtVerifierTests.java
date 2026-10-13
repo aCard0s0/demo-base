@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The only thing standing between a stranger and somebody's todos, agents or money, so it is checked against
+ * The only thing standing between a stranger and somebody's agents or data, so it is checked against
  * a real JWKS endpoint rather than a mock: a throwaway HTTP server publishing the public half of a key made here.
  */
 class JwtVerifierTests {

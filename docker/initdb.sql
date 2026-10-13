@@ -1,6 +1,6 @@
 -- One database and one role per service, so a service cannot reach another's tables even by accident.
--- Development credentials: the db container publishes no port, so nothing outside the compose network
--- can reach it. Change these before this goes anywhere real.
+-- Development credentials: the db container publishes at most a loopback port (compose.override.yaml), so
+-- nothing off this machine can reach it. Change these before this goes anywhere real.
 -- The db-init service runs this on every `compose up`, before any service starts, so it only creates
 -- what is missing: a service added later is one more name in the list, on the volume you already have.
 -- Each role's password is its name. CREATE DATABASE cannot run inside a DO block, hence \gexec.

@@ -30,7 +30,7 @@ class UrlPolicyTests {
             "intranet.example", "10.1.2.3",
             "two-faced.example", PUBLIC));
 
-    final Set<String> trusted = Set.of("http://todo-service:9082/mcp", "http://wallet-service:9084/mcp", "http://127.0.0.1:9999/fake");
+    final Set<String> trusted = Set.of("http://mcp-one:9082/mcp", "http://mcp-two:9084/mcp", "http://127.0.0.1:9999/fake");
 
     final UrlPolicy urls = new UrlPolicy(() -> trusted, host -> {
         String answer = dns.get(host);
@@ -73,14 +73,14 @@ class UrlPolicyTests {
 
     @Test
     void theDeploymentsOwnServersAreTrustedExactlyAsWritten() {
-        assertEquals("http://todo-service:9082/mcp", urls.clean("http://todo-service:9082/mcp"));
-        assertEquals("http://wallet-service:9084/mcp", urls.clean("http://wallet-service:9084/mcp"));
+        assertEquals("http://mcp-one:9082/mcp", urls.clean("http://mcp-one:9082/mcp"));
+        assertEquals("http://mcp-two:9084/mcp", urls.clean("http://mcp-two:9084/mcp"));
         assertEquals("http://127.0.0.1:9999/fake", urls.clean("http://127.0.0.1:9999/fake"));
-        urls.checkBeforeConnect("http://todo-service:9082/mcp");
+        urls.checkBeforeConnect("http://mcp-one:9082/mcp");
         // Exactly: a different port, path or scheme on a trusted host is not the trusted server.
-        refusedAtSave("http://wallet-service:9085/mcp");
-        refusedAtSave("http://wallet-service:9084/other");
-        refusedAtSave("https://todo-service:9082/mcp");
+        refusedAtSave("http://mcp-two:9085/mcp");
+        refusedAtSave("http://mcp-two:9084/other");
+        refusedAtSave("https://mcp-one:9082/mcp");
     }
 
     @Test
@@ -103,8 +103,8 @@ class UrlPolicyTests {
         UrlPolicy late = new UrlPolicy(() -> now[0], host -> {
             throw new UnknownHostException(host);
         });
-        assertThrows(ResponseStatusException.class, () -> late.clean("http://todo-service:9082/mcp"));
-        now[0] = Set.of("http://todo-service:9082/mcp");
-        assertEquals("http://todo-service:9082/mcp", late.clean("http://todo-service:9082/mcp"));
+        assertThrows(ResponseStatusException.class, () -> late.clean("http://mcp-one:9082/mcp"));
+        now[0] = Set.of("http://mcp-one:9082/mcp");
+        assertEquals("http://mcp-one:9082/mcp", late.clean("http://mcp-one:9082/mcp"));
     }
 }

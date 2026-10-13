@@ -86,7 +86,7 @@ public class OAuthController {
      * Over https every cookie here is {@code __Host-}: the browser then refuses one set by a sibling subdomain
      * or over plain http, so nobody else on the domain can plant their own state and verifier -- or a finished
      * hand-off -- in this browser and sign it into their account. The prefix demands Path=/, which is why the
-     * proxy strips cookies from the upstreams that are not ours. Plain http (localhost) cannot be Secure, so it
+     * cookie reaches every path on this origin, all of them ours. Plain http (localhost) cannot be Secure, so it
      * keeps the bare names under /api/oauth.
      */
     private final boolean https;
