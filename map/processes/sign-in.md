@@ -31,19 +31,19 @@ lockout is per email because every browser request reaches the service from the 
 3. `SessionService.login`, `apps/auth-service/src/main/java/com/demo/authservice/session/SessionService.java:43`: 5 failures per email per 15 min → 429 (`:22`, `:45`, window logic `apps/auth-service/src/main/java/com/demo/authservice/support/AttemptWindow.java:49`).
 4. One BCrypt check even for an unknown email; failure recorded, `SessionService.java:51`.
 5. Only after the password matches: suspended → 403 `:58`; unverified email → link re-mailed, 403 `:62`.
-6. Token: `SessionService.java:70` → `apps/auth-service/src/main/java/com/demo/authservice/token/Tokens.java:66` (claims `sub,email,name,role,ver`, `:83`; TTL `auth.token-ttl` 30m, `:51`).
+6. Token: `SessionService.java:70` → `apps/auth-service/src/main/java/com/demo/authservice/token/Tokens.java:103` (claims `iss,aud,sub,email,name,role,ver`, `:120-130`; TTL `auth.token-ttl` 30m, `:63`).
 7. OAuth: buttons from `GET /api/oauth/providers`, `auth.ts:57` → `apps/auth-service/src/main/java/com/demo/authservice/oauth/OAuthController.java:116` → only configured providers, `libs/auth-provider/core/src/main/java/com/demo/auth/provider/OAuthFlow.java:49`. Each button is a plain link to `/start`, `apps/web/src/app/auth/login/login.html:51`.
 8. `start`: random state and verifier, both set as HttpOnly cookies (10 min, Lax, or None for form-post providers; `__Host-` over https), 302 to consent, `OAuthController.java:124`, cookies `:221`; consent URL carries the S256 challenge, `OAuthFlow.java:63`, `:117`.
 9. `callback` (GET or POST), `OAuthController.java:144`: state/verifier cookies spent `:154`; provider error, state mismatch (constant-time `:241`) or no code each 302 to `/login#error=<code>` `:158`.
 10. Code + verifier exchanged back-channel, `OAuthFlow.java:84`; identity read by the provider class, `OAuthFlow.java:76`.
-11. User found or created by email, `OAuthController.java:169` → `apps/auth-service/src/main/java/com/demo/authservice/user/UserService.java:242`; an unproven address is claimed and its `ver` bumped (`UserRepository.java:45`). Suspended → `#error=suspended`, `OAuthController.java:170`.
+11. User found or created by email, `OAuthController.java:169` → `apps/auth-service/src/main/java/com/demo/authservice/user/UserService.java:267`; an unproven address is claimed and its `ver` bumped (`UserRepository.java:56`). Suspended → `#error=suspended`, `OAuthController.java:170`.
 12. Token set in `oauth_session` (HttpOnly, Strict, 1 min), 302 to `/login#oauth=done`, `OAuthController.java:173`.
 13. Login page sees `#oauth=done`, scrubs it, `login.ts:59` → `Auth.finishOAuth`, `auth.ts:81` → `POST /api/oauth/session` returns the token once, clears the cookie, `no-store`; no cookie → 401, `OAuthController.java:187`.
 14. Web adopts the token, `auth.ts:87`; persisted to localStorage `auth-token`, `auth.ts:50`; bearer added and a 401 drops it, `auth.ts:154`.
 
 ## If you change this
 
-- **Hits:** `LoginResponse` / `{token}` shapes read by `auth.ts`; the `#oauth` / `#error` codes, which `OAUTH_ERRORS` in `login.ts:9` must name; cookie names/paths (`__Host-` needs `Path=/`, else `/api/oauth`) and `OAUTH_REDIRECT_BASE_URL` (`.env.example:59`), which providers have registered; token claims, which `JwtVerifier` reads in todo-/agent-service.
+- **Hits:** `LoginResponse` / `{token}` shapes read by `auth.ts`; the `#oauth` / `#error` codes, which `OAUTH_ERRORS` in `login.ts:9` must name; cookie names/paths (`__Host-` needs `Path=/`, else `/api/oauth`) and `OAUTH_REDIRECT_BASE_URL` (`.env.example:64`), which providers have registered; token claims, which `JwtVerifier` reads in todo-/agent-service.
 - **Does not hit:** todo-/agent-service code for a login change that keeps the claims; the agent token (minted separately, see [agent-token-mint](agent-token-mint.md)); any server-side session store (there is none).
 
 ## Surfaces

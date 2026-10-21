@@ -17,4 +17,4 @@
 | Databases | [platform/databases.md](platform/databases.md) | docker/initdb.sql, changelogs | verified |
 | Routes | [platform/routes.md](platform/routes.md) | docker/nginx.conf, apps/web/proxy.conf.json | verified |
 | Web app | [platform/web-app.md](platform/web-app.md) | apps/web | verified |
-| Project CLI | [platform/project-cli.md](platform/project-cli.md) | ./demo-base | verified |
+| Project CLI | [platform/project-cli.md](platform/project-cli.md) | ./dbase | verified |

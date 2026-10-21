@@ -172,7 +172,7 @@ class AgentServiceTests {
                 assertThrows(ResponseStatusException.class, () -> agents.addServer(user("5"), a.getId(),
                         new NewMcpServer("ok", "http://10.0.0.1/mcp", null, false, Access.READ), "")).getReason());
         assertThrows(ResponseStatusException.class, () -> agents.updateServer(user("5"), a.getId(), main,
-                new UpdateMcpServer(null, "http://auth-service:9081/internal/agent-tokens", null, null, null), ""));
+                new UpdateMcpServer(null, "http://auth-service:1001/internal/agent-tokens", null, null, null), ""));
         assertEquals(1, agents.get(user("5"), a.getId()).getServers().size());
         assertEquals("http://mcp.example/main", agents.get(user("5"), a.getId()).getServers().get(0).getUrl(), "the edit must not have stuck");
         assertThrows(ResponseStatusException.class, () -> agents.addServer(user("5"), a.getId(),
@@ -201,6 +201,13 @@ class AgentServiceTests {
                 new UpdateMcpServer(null, "http://mcp.example/elsewhere", null, null, null), ""));
         agents.updateServer(user("12"), a.getId(), own, new UpdateMcpServer(null, "http://mcp.example/elsewhere", null, false, null), "");
         assertFalse(agents.get(user("12"), a.getId()).getServers().get(0).isForwardCallerToken(), "both in one edit is fine");
+
+        // Left unsaid, as the page adds a server: the deployment's own forwards, unless a header or a no says otherwise.
+        Agent b = agents.create(user("12"), new NewAgent("b", "", null));
+        assertTrue(agents.addServer(user("12"), b.getId(), new NewMcpServer("unsaid", OWN_SERVER, null, null, Access.READ), "").isForwardCallerToken());
+        assertFalse(agents.addServer(user("12"), b.getId(), new NewMcpServer("hdr", OWN_SERVER, "Bearer x", null, Access.READ), "").isForwardCallerToken());
+        assertFalse(agents.addServer(user("12"), b.getId(), new NewMcpServer("no", OWN_SERVER, null, false, Access.READ), "").isForwardCallerToken());
+        assertFalse(agents.addServer(user("12"), b.getId(), new NewMcpServer("typed", "http://mcp.example/typed", null, null, Access.READ), "").isForwardCallerToken());
 
         // Column widths are refused here, not by the database.
         assertThrows(ResponseStatusException.class, () -> agents.addServer(user("12"), a.getId(),

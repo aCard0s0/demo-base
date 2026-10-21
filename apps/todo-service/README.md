@@ -1,12 +1,14 @@
 # todo-service
 
-Per-user todos. Port **9082**.
+Per-user todos. Port **1002**.
 
 It never calls auth-service to find out who is asking. It fetches the public half of auth-service's signing
 key once, caches it, and verifies every token in process -- so there is no per-request hop, and holding only
 the public key it could not mint a token of its own even if it wanted to.
 
-It is the only service that writes to the `todo` database, and it has no access to the `auth` one.
+It is the only service that writes to the `todo` database, and it has no access to the `auth` one. The schema
+is Liquibase's (`src/main/resources/db/changelog`) and Hibernate only validates it, so a new column is a new
+changeset, never an entity change alone.
 
 ## Packages
 
@@ -29,8 +31,9 @@ kept apart so the trust boundary shows up in the tree.
 
 `JwtVerifier` checks the token against the JWKS auth-service publishes. The key selector is pinned to RS256,
 so a token asking for `none` or a symmetric algorithm is rejected before its signature is looked at, and the
-claims verifier requires `sub` and `exp` -- a token with no expiry is refused outright rather than treated
-as one that never expires.
+claims verifier requires `sub` and `exp`, and exactly `iss` = `auth-service`, `aud` = `demo-base` -- a token
+with no expiry is refused outright rather than treated as one that never expires, and one another stack minted
+is refused too.
 
 What comes back is a `Caller`: a user id, a role and, for an agent token, the agent it is pinned to. The
 role is a plain string, not an enum copied over from auth-service -- the verifying side shares no code with
@@ -70,7 +73,8 @@ thing that picks between them, through one private `writable(caller, id)` that e
 caller that does not write everyone can reach no other user's row, and a moderator -- which reads
 everyone but writes only its own -- lands on the owner-scoped lookup for every write exactly as a user does.
 
-Someone else's todo id comes back **404, not 403**, so neither answer says whether that todo exists.
+Someone else's todo id comes back **404, not 403** -- `no such todo`, as for an id nobody has -- so neither
+answer says whether that todo exists.
 
 ## Owners
 
@@ -124,9 +128,9 @@ alone", so renaming a todo cannot flip its done flag by omitting it. Every rejec
 
 | Property | Environment | Default |
 |---|---|---|
-| `server.port` | `SERVER_PORT` | `9082` |
-| `auth.jwks-uri` | `AUTH_JWKS_URI` | `http://localhost:9081/api/jwks.json` |
-| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/todo` |
+| `server.port` | `SERVER_PORT` | `1002` |
+| `auth.jwks-uri` | `AUTH_JWKS_URI` | `http://localhost:1001/api/jwks.json` |
+| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:1006/todo` |
 | `spring.datasource.username` / `.password` | `SPRING_DATASOURCE_*` | `todo` / `todo` |
 
 ## Running it alone

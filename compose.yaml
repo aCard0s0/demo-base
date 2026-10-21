@@ -1,10 +1,17 @@
-# The whole stack: `docker compose up -d --build --wait`, then http://localhost:3000.
+# The whole stack: `docker compose up -d --build --wait`, then http://localhost:1000.
 # Postgres alone, for running the services from the IDE: `docker compose up -d --wait db db-init` (with the port
 # compose.override.yaml publishes). Settings come from .env (see .env.example); anything unset keeps the
 # service's development default, so the stack starts with no .env at all -- fine on a laptop, wrong anywhere else.
 # Only web and mailpit publish a port, both on loopback; the services and the database talk over the compose network.
+# Ports: web 1000, auth-service 1001, todo-service 1002, agent-service 1003, Mailpit 1004 (its SMTP 1005), Postgres 1006
+# (compose.override.yaml). Each container is <project>-<service>, demo-base-auth-service and so on, with no -1:
+# COMPOSE_PROJECT_NAME renames the lot. The name is fixed, so every checkout drives the same stack and database
+# volume; a second stack side by side needs its own COMPOSE_PROJECT_NAME and other host ports.
+name: demo-base
+
 services:
   db:
+    container_name: ${COMPOSE_PROJECT_NAME:-demo-base}-db
     image: postgres:18-alpine
     # Postgres' own floor is shared_buffers (128MB by default) plus a little per connection; the three
     # services open one small Hikari pool each.
@@ -25,6 +32,7 @@ services:
   # Creates whatever role and database is missing, then exits. It runs on every `up`, not only when the
   # volume is new, so a service added later gets its database on the volume that already exists.
   db-init:
+    container_name: ${COMPOSE_PROJECT_NAME:-demo-base}-db-init
     image: postgres:18-alpine
     mem_limit: 32m
     cpus: 0.5
@@ -38,6 +46,7 @@ services:
         condition: service_healthy
 
   auth-service:
+    container_name: ${COMPOSE_PROJECT_NAME:-demo-base}-auth-service
     build:
       context: .
       target: auth-service
@@ -61,20 +70,23 @@ services:
       mailpit:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9081/api/public/stats || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:1001/api/public/stats || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 20
 
-  # Catches every mail auth-service sends (the links that prove an address): http://localhost:8025.
+  # Catches every mail auth-service sends (the links that prove an address): http://localhost:1004.
   mailpit:
+    container_name: ${COMPOSE_PROJECT_NAME:-demo-base}-mailpit
     image: axllent/mailpit:v1.28
     mem_limit: 64m
     cpus: 0.5
     ports:
-      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1004:8025"   # the inbox
+      - "127.0.0.1:1005:1025"   # SMTP, for auth-service run from source
 
   todo-service:
+    container_name: ${COMPOSE_PROJECT_NAME:-demo-base}-todo-service
     build:
       context: .
       target: todo-service
@@ -85,21 +97,26 @@ services:
     environment:
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=50
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/todo
+      # .env reaches every service; auth-service's own secrets stay with it. Either key forges a way into any user.
+      AUTH_SIGNING_KEY: ""
+      AUTH_EMAIL_LINK_KEY: ""
+      ADMIN_PASSWORD: ""
       # Only the public half of the signing key ever crosses this network.
-      AUTH_JWKS_URI: http://auth-service:9081/api/jwks.json
-      AUTH_TOKEN_VERSIONS_URI: http://auth-service:9081/internal/token-versions
+      AUTH_JWKS_URI: http://auth-service:1001/api/jwks.json
+      AUTH_TOKEN_VERSIONS_URI: http://auth-service:1001/internal/token-versions
     depends_on:
       db-init:
         condition: service_completed_successfully
       auth-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9082/api/public/todos/stats || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:1002/api/public/todos/stats || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 20
 
   agent-service:
+    container_name: ${COMPOSE_PROJECT_NAME:-demo-base}-agent-service
     build:
       context: .
       target: agent-service
@@ -110,11 +127,14 @@ services:
     environment:
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=50
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/agent
-      AUTH_JWKS_URI: http://auth-service:9081/api/jwks.json
-      AUTH_TOKEN_VERSIONS_URI: http://auth-service:9081/internal/token-versions
-      AUTH_AGENT_TOKENS_URI: http://auth-service:9081/internal/agent-tokens
+      AUTH_SIGNING_KEY: ""
+      AUTH_EMAIL_LINK_KEY: ""
+      ADMIN_PASSWORD: ""
+      AUTH_JWKS_URI: http://auth-service:1001/api/jwks.json
+      AUTH_TOKEN_VERSIONS_URI: http://auth-service:1001/internal/token-versions
+      AUTH_AGENT_TOKENS_URI: http://auth-service:1001/internal/agent-tokens
       # The deployment's own MCP servers an owner may attach by their private name. .env may override.
-      AGENTS_TRUSTED_SERVER_URLS: ${AGENTS_TRUSTED_SERVER_URLS:-http://todo-service:9082/mcp}
+      AGENTS_TRUSTED_SERVER_URLS: ${AGENTS_TRUSTED_SERVER_URLS:-http://todo-service:1002/mcp}
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -123,13 +143,14 @@ services:
       todo-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9083/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:1003/actuator/health || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 20
 
   # The Angular app on nginx, routing /api and /mcp to the services like the dev server (docker/nginx.conf).
   web:
+    container_name: ${COMPOSE_PROJECT_NAME:-demo-base}-web
     build:
       context: .
       target: web
@@ -137,7 +158,7 @@ services:
     cpus: 0.5
     # Loopback, like Mailpit: the development defaults (admin, secrets) must not face the LAN.
     ports:
-      - "127.0.0.1:3000:80"
+      - "127.0.0.1:1000:80"
     depends_on:
       auth-service:
         condition: service_healthy

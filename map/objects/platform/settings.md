@@ -23,14 +23,15 @@ stack starts with no `.env` at all (`compose.yaml:3-4`) — right on a laptop, w
 
 | `.env` name | Property → read by | Dev default | Set before going real? |
 |---|---|---|---|
-| `ADMIN_EMAIL` / `_PASSWORD` | `admin.*` (`auth…/application.properties:37-38`) → `AdminSeeder.java:34-43`; blank seeds none, create-only (`.env.example:11-14`) | blank | **yes** |
-| `AUTH_INTERNAL_SECRET` | `auth.internal-secret` in auth (`:25`) **and** agent (`agent…/application.properties:13`) → `AgentTokenController.java:38`, `AgentTokens.java:33`; blank closes the mint endpoint | `dev-internal-secret` | **yes**, same value both |
-| `AGENTS_AUTH_HEADER_KEY` | `agents.auth-header-key` (agent `:16`) → `AuthHeaderCrypto.java:18`; blank refuses start; rotating breaks stored headers (`.env.example:22-24`) | `dev-auth-header-key` | **yes**, once |
-| `AUTH_EMAIL_LINK_KEY` | `auth.email-link-key` (auth `:33`) → `EmailLinks.java:68-70`; blank = fresh per start | blank | **yes** |
-| `SPRING_MAIL_*`, `AUTH_MAIL_FROM` | Spring's `spring.mail.*` (not in the file), `auth.mail-from` (auth `:30`); no host refuses signup (auth `:27-29`) | compose → mailpit (`compose.yaml:56-57`) | **yes** |
-| `OAUTH_REDIRECT_BASE_URL`, `OAUTH_<P>_*` | `oauth.*` (auth `:44-69`) → `@ConfigurationProperties` per provider (`libs/auth-provider/google/…/GoogleProvider.java:13`); base also builds mailed links (`EmailLinks.java:66`) | `http://localhost:3000`, all off | **yes** if used |
-| `AGENTS_TRUSTED_SERVER_URLS` | `agents.trusted-server-urls` (agent `:36`) → read per check, `ServerUrls.java:32` | todo's `/mcp` (`compose.yaml:117`) | **yes** if MCP servers change |
-| `POSTGRES_PASSWORD` | compose only: the db superuser (`compose.yaml:14`, `:32`), not the service roles (`docker/initdb.sql:6-9`) | `postgres` | yes |
+| `ADMIN_EMAIL` / `_PASSWORD` | `admin.*` (`auth…/application.properties:40-41`) → `AdminSeeder.java:34-43`; blank seeds none, create-only (`.env.example:11-14`) | blank | **yes** |
+| `AUTH_INTERNAL_SECRET` | `auth.internal-secret` in auth (`:28`) **and** agent (`agent…/application.properties:13`) → `AgentTokenController.java:38`, `AgentTokens.java:33`; blank closes the mint endpoint | `dev-internal-secret` | **yes**, same value both |
+| `AUTH_SIGNING_KEY` | `auth.signing-key` (auth `:25`) → `Tokens.java:65-73`; base64 PKCS#8 RSA ≥ 2048 bits, else refuses start (`Tokens.java:74-94`); blank = a fresh key per start, every token dies on restart; rotating it voids every token out (`.env.example:22-25`). `./dbase setup` adds one when absent or blank (`dbase:192-195`), `down -v` replaces it (`:362-363`), `start` warns without (`dbase:313-315`); only auth-service sees it: compose blanks it for the others, with `AUTH_EMAIL_LINK_KEY` and `ADMIN_PASSWORD` (`compose.yaml:100-103`, `:130-132`), and `dev` unsets all three (`dbase:278`) | blank | **yes**, once |
+| `AGENTS_AUTH_HEADER_KEY` | `agents.auth-header-key` (agent `:16`) → `AuthHeaderCrypto.java:18`; blank refuses start; rotating breaks stored headers (`.env.example:27-29`) | `dev-auth-header-key` | **yes**, once |
+| `AUTH_EMAIL_LINK_KEY` | `auth.email-link-key` (auth `:36`) → `EmailLinks.java:68-70`; blank = fresh per start | blank | **yes** |
+| `SPRING_MAIL_*`, `AUTH_MAIL_FROM` | Spring's `spring.mail.*` (not in the file), `auth.mail-from` (auth `:33`); no host refuses signup (auth `:30-32`) | compose → mailpit (`compose.yaml:65-66`); `./dbase dev auth-service` → Mailpit's SMTP on `localhost:1005` when unset (`dbase:276`, `compose.yaml:86`) | **yes** |
+| `OAUTH_REDIRECT_BASE_URL`, `OAUTH_<P>_*` | `oauth.*` (auth `:47-72`) → `@ConfigurationProperties` per provider (`libs/auth-provider/google/…/GoogleProvider.java:13`); base also builds mailed links (`EmailLinks.java:66`) | `http://localhost:1000`, all off | **yes** if used |
+| `AGENTS_TRUSTED_SERVER_URLS` | `agents.trusted-server-urls` (agent `:36`) → read per check, `ServerUrls.java:32` | todo's `/mcp` (`compose.yaml:137`) | **yes** if MCP servers change |
+| `POSTGRES_PASSWORD` | compose only: the db superuser (`compose.yaml:21`, `:40`), not the service roles (`docker/initdb.sql:6-9`) | `postgres` | yes |
 
 Paths: `auth…` = `apps/auth-service/src/main/resources`, `agent…` = `apps/agent-service/src/main/resources`.
 Not in `.env.example` but bindable the same way: `AUTH_TOKEN_TTL`, `AUTH_AGENT_TOKEN_TTL` (auth `:19-22`).
@@ -41,8 +42,9 @@ Not in `.env.example` but bindable the same way: `AUTH_TOKEN_TTL`, `AUTH_AGENT_T
 - **owned-by:** each service's `application.properties`
 - **joins:** [stack](stack.md) (env_file), [token](../identity/token.md), [email-link](../identity/email-link.md),
   [user](../identity/user.md) (admin seed), [agent-mcp-server](../agents/agent-mcp-server.md) (header key, trusted URLs)
-- **looks-like-but-is-not:** compose's own `${VAR:-default}` interpolation (`compose.yaml:56-57`, `:117`), which
-  also reads `.env` but only for the keys compose names
+- **looks-like-but-is-not:** compose's own `${VAR:-default}` interpolation (`compose.yaml:65-66`, `:137`), which
+  also reads `.env` but only for the keys compose names: a `SPRING_MAIL_HOST` in `.env` moves the container's mail
+  too, which is why `dev` sets the from-source one in its own shell (`dbase:276`)
 
 ## If you change this
 
@@ -50,16 +52,18 @@ Not in `.env.example` but bindable the same way: `AUTH_TOKEN_TTL`, `AUTH_AGENT_T
   `.env.example`. A renamed property → its env name, so `.env.example`, every real `.env`, and any compose
   `environment:` key. `AUTH_INTERNAL_SECRET` is read by two services: both must see it (they do, via the whole `.env`).
   `POSTGRES_PASSWORD` on an existing volume: the superuser keeps its old password, but db-init logs in with the
-  new one (`compose.yaml:32`), fails, and every service waits on it.
-- **Does not hit:** `compose.yaml` — `.env` is passed whole (`compose.yaml:49-51`), so a new key needs no compose
+  new one (`compose.yaml:40`), fails, and every service waits on it.
+- **Does not hit:** `compose.yaml` — `.env` is passed whole (`compose.yaml:58-60`), so a new key needs no compose
   edit. Changing `ADMIN_PASSWORD` does not reset an admin that already exists (`.env.example:11-14`).
 
 ## Surfaces
 
 | Surface | Role |
 |---|---|
-| `./demo-base setup` | seeds `.env` from `.env.example` (`demo-base:180-181`) |
-| `./demo-base dev` | sources `.env` into the shell (`demo-base:154-155`, `:254`) |
+| `./dbase setup` | seeds `.env` from `.env.example` (`dbase:190-191`), then writes `AUTH_SIGNING_KEY` when it is absent or blank (`:192-195`) |
+| `./dbase start` / `restart` | warn when `.env` has no non-blank `AUTH_SIGNING_KEY` and auth-service is a target (`dbase:313-315`) |
+| `./dbase dev` | sources `.env` into the shell (`dbase:164-165`, `:273`); drops `AUTH_SIGNING_KEY`, `AUTH_EMAIL_LINK_KEY` and `ADMIN_PASSWORD` for todo/agent, defaults auth-service's mail to `localhost:1005` (`:274-278`) |
+| `./dbase down -v` | replaces `AUTH_SIGNING_KEY`, when set, as it deletes the database (`dbase:362-363`) |
 
 ## See
 

@@ -9,32 +9,44 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.security.KeyFactory;
+import java.security.interfaces.RSAPrivateCrtKey;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.RSAPublicKeySpec;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
+import java.util.Base64;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * Issues and checks the RS256 tokens that identify a caller.
  *
- * <p>The keypair is generated at startup and never written to disk: auth-service is the only holder of the
- * private half, and every other service reads the public half from the JWKS endpoint. Asymmetric rather than
- * a shared secret, so a service that only needs to verify tokens is never able to mint them.
+ * <p>The private key comes from {@code auth.signing-key} (base64 PKCS#8, {@code AUTH_SIGNING_KEY} in .env):
+ * auth-service is the only holder of it, and every other service reads the public half from the JWKS endpoint.
+ * Asymmetric rather than a shared secret, so a service that only needs to verify tokens is never able to mint them.
+ * The kid is the key's thumbprint, so the same key publishes the same kid across restarts.
  *
- * <p>A restart mints a new key and so invalidates every token in flight, which is the same thing the old
- * in-memory session map did.
+ * <p>Left blank, a key is made at startup, so a restart invalidates every token in flight, the 30-day agent
+ * tokens included. Fine for tests and a bare {@code spring-boot:run}; {@code ./dbase setup} writes one to .env.
  */
-// ponytail: one key, no rotation. Tokens carry a kid, so adding a second key later is additive.
+// ponytail: one key, no rotation. Tokens carry a kid, so publishing a previous key beside it later is additive.
 @Component
 public class Tokens {
 
+    private static final Logger log = LoggerFactory.getLogger(Tokens.class);
+
     private final RSAKey key;
+
+    private final RSASSASigner signer;
 
     private final RSASSAVerifier verifier;
 
@@ -44,16 +56,41 @@ public class Tokens {
 
     /** Login tokens of the given life, agent tokens of the default 30 days. */
     public Tokens(Duration ttl) throws Exception {
-        this(ttl, Duration.ofDays(30));
+        this(ttl, Duration.ofDays(30), "");
     }
 
     @Autowired
     public Tokens(@Value("${auth.token-ttl:30m}") Duration ttl,
-                  @Value("${auth.agent-token-ttl:30d}") Duration agentTtl) throws Exception {
+                  @Value("${auth.agent-token-ttl:30d}") Duration agentTtl,
+                  @Value("${auth.signing-key:}") String signingKey) throws Exception {
         this.ttl = ttl;
         this.agentTtl = agentTtl;
-        this.key = new RSAKeyGenerator(2048).keyID(UUID.randomUUID().toString()).generate();
+        if (signingKey == null || signingKey.isBlank()) {
+            log.warn("auth.signing-key is blank: signing with a key made at startup, so a restart voids every token");
+            this.key = new RSAKeyGenerator(2048).keyIDFromThumbprint(true).generate();
+        } else {
+            this.key = parse(signingKey);
+        }
+        try {
+            // Built here so a key under 2048 bits refuses to start rather than failing the first login.
+            this.signer = new RSASSASigner(key);
+        } catch (Exception e) {
+            throw new IllegalStateException("auth.signing-key is too weak: RSA 2048 bits or more", e);
+        }
         this.verifier = new RSASSAVerifier(key.toPublicJWK());
+    }
+
+    /** The RSA key a base64 PKCS#8 private key names, its public half rebuilt from the CRT fields. */
+    private static RSAKey parse(String signingKey) {
+        try {
+            KeyFactory rsa = KeyFactory.getInstance("RSA");
+            RSAPrivateCrtKey priv = (RSAPrivateCrtKey) rsa.generatePrivate(
+                    new PKCS8EncodedKeySpec(Base64.getMimeDecoder().decode(signingKey)));
+            RSAPublicKey pub = (RSAPublicKey) rsa.generatePublic(new RSAPublicKeySpec(priv.getModulus(), priv.getPublicExponent()));
+            return new RSAKey.Builder(pub).privateKey(priv).keyIDFromThumbprint().build();
+        } catch (Exception e) {
+            throw new IllegalStateException("auth.signing-key is not a base64 PKCS#8 RSA private key", e);
+        }
     }
 
     /**
@@ -81,6 +118,9 @@ public class Tokens {
                          Map<String, Object> extra, Duration lifetime) {
         Instant now = Instant.now();
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
+                // Checked exactly by auth-client's JwtVerifier.
+                .issuer("auth-service")
+                .audience("demo-base")
                 .subject(String.valueOf(userId))
                 .claim("email", email)
                 .claim("name", name)
@@ -91,7 +131,7 @@ public class Tokens {
         extra.forEach(claims::claim);
         SignedJWT jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.getKeyID()).build(), claims.build());
         try {
-            jwt.sign(new RSASSASigner(key));
+            jwt.sign(signer);
         } catch (Exception e) {
             throw new IllegalStateException("could not sign a token", e);
         }

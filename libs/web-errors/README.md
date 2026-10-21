@@ -1,7 +1,7 @@
 # web-errors
 
-The one copy of the `{"error": "..."}` body the frontend reads. A plain jar with one class; all four services
-depend on it.
+The one copy of the `{"error": "..."}` body the frontend reads. A plain jar of two classes; the three services,
+`libs/mcp-server` and `libs/outbound-urls` depend on it.
 
 ```
 com.demo.web.errors   ErrorBodyAdvice   every rejection MVC makes, in the {error} shape

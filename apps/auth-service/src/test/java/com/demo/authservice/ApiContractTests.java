@@ -1,5 +1,6 @@
 package com.demo.authservice;
 
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -7,6 +8,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -269,6 +272,64 @@ class ApiContractTests {
                         .contentType(MediaType.APPLICATION_JSON).content(role("USER")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").isString());
+    }
+
+    @Test
+    void anAdminCreatesAUserWithARoleThatSignsInAtOnce() throws Exception {
+        String admin = login("admin@example.com", "admin-pass-01");
+        String user = register("Lise", "lise@example.com", "meitner-1878");
+        String body = """
+                {"name":"Emmy","email":"Emmy@Example.com","password":"noether-1882","role":"MODERATOR"}""";
+
+        mvc.perform(post("/api/users/create").header("Authorization", "Bearer " + user)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/users/create").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+
+        // No mail, no link: the admin's say-so is the proof, and the address is cleaned like any other.
+        mvc.perform(post("/api/users/create").header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.email").value("emmy@example.com"))
+                .andExpect(jsonPath("$.role").value("MODERATOR"))
+                .andExpect(jsonPath("$.passwordSet").value(true))
+                .andExpect(jsonPath("$.token").doesNotExist());
+        mvc.perform(get("/api/users").header("Authorization", "Bearer " + login("emmy@example.com", "noether-1882")))
+                .andExpect(status().isOk());
+
+        // An admin reads the whole list, so a taken address is named plainly rather than hidden.
+        mvc.perform(post("/api/users/create").header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("that email is already registered"));
+        // An address nobody proved is free, as at signup: the admin's user takes the row over and starts clean, the
+        // squatter's password gone and a suspension of theirs with it.
+        mvc.perform(post("/api/users").contentType(MediaType.APPLICATION_JSON)
+                        .content(json("Squatter", "rosalind@example.com", "squatter-pass")))
+                .andExpect(status().isCreated());
+        List<Integer> squatter = JsonPath.read(mvc.perform(get("/api/users").header("Authorization", "Bearer " + admin))
+                .andReturn().getResponse().getContentAsString(), "$[?(@.email == 'rosalind@example.com')].id");
+        mvc.perform(put("/api/users/" + squatter.get(0) + "/suspended").header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"suspended\":true}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/users/create").header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Rosalind\",\"email\":\"rosalind@example.com\",\"password\":\"franklin-1920\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(squatter.get(0)))
+                .andExpect(jsonPath("$.name").value("Rosalind"))
+                .andExpect(jsonPath("$.role").value("USER"))
+                .andExpect(jsonPath("$.suspended").value(false));
+        login("rosalind@example.com", "franklin-1920");
+        mvc.perform(post("/api/login").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(null, "rosalind@example.com", "squatter-pass")))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/users/create").header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Short\",\"email\":\"short@example.com\",\"password\":\"short\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("password must be at least 8 characters"));
     }
 
     @Test

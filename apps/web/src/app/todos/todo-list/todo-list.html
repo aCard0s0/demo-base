@@ -1,0 +1,59 @@
+<div class="agents-page">
+  <section class="auth-card">
+    <h1 class="auth-title">Todos</h1>
+
+    @if (error()) {
+      <p class="auth-error" role="alert">{{ error() }}</p>
+    }
+
+    <form ngNativeValidate (ngSubmit)="add()" class="filters">
+      <input
+        name="newTitle"
+        aria-label="New todo"
+        placeholder="What needs doing?"
+        [(ngModel)]="newTitle"
+        required
+        maxlength="255"
+        autocomplete="off"
+      />
+      <button type="submit" class="btn btn-primary" [disabled]="busy()">Add</button>
+    </form>
+
+    @if (list(); as todos) {
+      @if (todos.length === 0) {
+        <p class="hint">Nothing yet.</p>
+      }
+      <ul class="item-list">
+        @for (t of todos; track t.id) {
+          <li class="item-head">
+            <label class="check">
+              <input
+                type="checkbox"
+                [checked]="t.done"
+                [disabled]="busy() || !writable(t)"
+                (change)="toggle(t)"
+              />
+              <span [style.text-decoration]="t.done ? 'line-through' : null">{{ t.title }}</span>
+            </label>
+            <span class="row-actions">
+              @if (t.owner !== me()) {
+                <span class="badge text-bg-secondary">user {{ t.owner }}</span>
+              }
+              @if (writable(t)) {
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  [attr.aria-label]="'Delete ' + t.title"
+                  [disabled]="busy()"
+                  (click)="remove(t)"
+                >
+                  <i class="bi bi-trash"></i>
+                </button>
+              }
+            </span>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+</div>

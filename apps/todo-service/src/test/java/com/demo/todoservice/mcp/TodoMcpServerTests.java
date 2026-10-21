@@ -42,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.datasource.url=jdbc:sqlite:target/mcp-test.db",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.liquibase.enabled=false",
         "spring.datasource.hikari.maximum-pool-size=1",
 })
 class TodoMcpServerTests {
@@ -154,7 +155,7 @@ class TodoMcpServerTests {
 
     private static String token(String subject) {
         try {
-            JWTClaimsSet claims = new JWTClaimsSet.Builder().subject(subject).claim("role", "USER")
+            JWTClaimsSet claims = new JWTClaimsSet.Builder().issuer("auth-service").audience("demo-base").subject(subject).claim("role", "USER")
                     .expirationTime(Date.from(Instant.now().plusSeconds(300))).build();
             SignedJWT jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(KEY.getKeyID()).build(), claims);
             jwt.sign(new RSASSASigner(KEY));

@@ -53,7 +53,7 @@ class OAuthFlowTests {
         half.setClientId("id");
 
         OAuthProperties config = new OAuthProperties();
-        config.setRedirectBaseUrl("http://localhost:3000/");
+        config.setRedirectBaseUrl("http://localhost:1000/");
         OAuthFlow flow = new OAuthFlow(config, List.of(on, half));
 
         assertEquals(List.of(on), flow.enabled());
@@ -62,7 +62,7 @@ class OAuthFlowTests {
 
         String consent = flow.consentUri(on, "s", "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk");
         assertTrue(consent.startsWith("https://on/auth?response_type=code&client_id=id&"), consent);
-        assertTrue(consent.contains("redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Foauth%2Fon%2Fcallback"), consent);
+        assertTrue(consent.contains("redirect_uri=http%3A%2F%2Flocalhost%3A1000%2Fapi%2Foauth%2Fon%2Fcallback"), consent);
         assertTrue(consent.endsWith("&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"), consent);
         assertFalse(consent.contains("response_mode"), "a query-string provider is not told about form_post: " + consent);
     }

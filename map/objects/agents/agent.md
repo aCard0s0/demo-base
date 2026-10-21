@@ -28,7 +28,7 @@ no role branch, unlike `TodoService.writable`.
 - `owner`, `name`, `instructions` (8000), `othersAccess`, all not null: `apps/agent-service/src/main/java/com/demo/agentservice/agent/entities/Agent.java:38-50`
 - Table and the `others_access` check constraint (`NONE`, `READ`, `WRITE`): `apps/agent-service/src/main/resources/db/changelog/changes/001-init.sql:8-14`
 - Schema is Liquibase, Hibernate only validates: `apps/agent-service/src/main/resources/application.properties:25`, `apps/agent-service/src/main/resources/db/changelog/db.changelog-master.yaml:2-8`
-- Body limits (name 1-100, instructions up to 8000) are DTO annotations checked in the service: `apps/agent-service/src/main/java/com/demo/agentservice/agent/dto/NewAgent.java:8-10`, `apps/agent-service/src/main/java/com/demo/agentservice/agent/AgentService.java:187-193`
+- Body limits (name 1-100, instructions up to 8000) are DTO annotations checked in the service: `apps/agent-service/src/main/java/com/demo/agentservice/agent/dto/NewAgent.java:8-10`, `apps/agent-service/src/main/java/com/demo/agentservice/agent/AgentService.java:190-196`
 - `othersAccess` defaults to `NONE` on create: `apps/agent-service/src/main/java/com/demo/agentservice/agent/AgentService.java:74-75`
 - `OthersAccess`: `NONE`, `READ` (reads), `WRITE` (writes): `apps/agent-service/src/main/java/com/demo/agentservice/agent/entities/OthersAccess.java:4-14`
 - It gates seven built-in tools, re-read every call; an agent may never change itself: `apps/agent-service/src/main/java/com/demo/agentservice/mcp/AgentTools.java:39-40`, `:85-95`

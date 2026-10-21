@@ -7,7 +7,7 @@
         straight back in. Agents are their owner's alone, so none are listed here.
       </p>
     } @else {
-      <p class="hint">Only an admin can change a role, suspend, or sign a user out.</p>
+      <p class="hint">Only an admin can create a user, change a role, suspend, or sign a user out.</p>
     }
 
     @if (error()) {
@@ -15,6 +15,59 @@
     }
     @if (notice()) {
       <p class="auth-ok" role="status">{{ notice() }}</p>
+    }
+
+    @if (admin()) {
+      <details class="new-user">
+        <summary class="section-title">New user</summary>
+        <form ngNativeValidate (ngSubmit)="create()" class="auth-form">
+          <div class="field">
+            <label for="newName">Name</label>
+            <input
+              id="newName"
+              name="newName"
+              [(ngModel)]="newName"
+              required
+              maxlength="255"
+              autocomplete="off"
+            />
+          </div>
+          <div class="field">
+            <label for="newEmail">Email</label>
+            <input
+              id="newEmail"
+              name="newEmail"
+              type="email"
+              [(ngModel)]="newEmail"
+              required
+              maxlength="255"
+              autocomplete="off"
+            />
+          </div>
+          <div class="field">
+            <label for="newPassword">Password</label>
+            <input
+              id="newPassword"
+              name="newPassword"
+              type="password"
+              [(ngModel)]="newPassword"
+              required
+              minlength="8"
+              autocomplete="new-password"
+            />
+            <span class="hint">No link is mailed: hand the password over yourself. They can change it on their profile.</span>
+          </div>
+          <div class="field">
+            <label for="newRole">Role</label>
+            <select id="newRole" name="newRole" [(ngModel)]="newRole">
+              @for (r of roles; track r) {
+                <option [value]="r">{{ r }}</option>
+              }
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary" [disabled]="busy()">Create user</button>
+        </form>
+      </details>
     }
 
     @if (list(); as users) {

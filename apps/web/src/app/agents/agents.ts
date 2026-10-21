@@ -68,7 +68,8 @@ export interface ServerForm {
  * The body for adding a server, or editing `existing`. The header is write-only: blank leaves the stored one
  * alone, and only an explicit clear sends the empty string that removes it. The caller's token may only be
  * forwarded to the deployment's own servers, which a row only says once saved, so the flag is sent only when
- * editing a trusted row or one that forwards already (to turn it off).
+ * editing a trusted row or one that forwards already (to turn it off). A new row leaves it unsaid, and agent-service
+ * forwards to its own servers unless a header was given.
  */
 export function serverBody(form: ServerForm, existing?: McpServer): Record<string, unknown> {
   const body: Record<string, unknown> = {

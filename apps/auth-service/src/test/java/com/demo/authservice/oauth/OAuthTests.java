@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.liquibase.enabled=false",
         // SQLite allows a single writer; one connection keeps Hibernate from tripping over itself.
         "spring.datasource.hikari.maximum-pool-size=1",
-        "oauth.redirect-base-url=http://localhost:3000",
+        "oauth.redirect-base-url=http://localhost:1000",
         "oauth.google.enabled=true",
         "oauth.google.client-id=test-client",
         "oauth.google.client-secret=test-secret",
@@ -80,7 +80,7 @@ class OAuthTests {
         assertNotNull(consent);
         assertTrue(consent.startsWith("https://accounts.google.com/o/oauth2/v2/auth?"), consent);
         assertTrue(consent.contains("client_id=test-client"), consent);
-        assertTrue(consent.contains("redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Foauth%2Fgoogle%2Fcallback"),
+        assertTrue(consent.contains("redirect_uri=http%3A%2F%2Flocalhost%3A1000%2Fapi%2Foauth%2Fgoogle%2Fcallback"),
                 "the provider must be told the address the browser uses, not this service's: " + consent);
 
         String state = response.getCookie("oauth_state").getValue();
@@ -101,19 +101,19 @@ class OAuthTests {
         // No cookie at all, which is what a forged callback from another site looks like.
         mvc.perform(get("/api/oauth/google/callback").param("code", "stolen").param("state", "guessed"))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", startsWith("http://localhost:3000/login#error=")));
+                .andExpect(header().string("Location", startsWith("http://localhost:1000/login#error=")));
 
         // A cookie that disagrees with the query is the same refusal.
         mvc.perform(get("/api/oauth/google/callback").param("code", "stolen").param("state", "guessed")
                         .cookie(new Cookie("oauth_state", "something-else")))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", startsWith("http://localhost:3000/login#error=")));
+                .andExpect(header().string("Location", startsWith("http://localhost:1000/login#error=")));
 
         // A matching state but no verifier cannot finish the exchange either, so it never reaches the provider.
         mvc.perform(get("/api/oauth/google/callback").param("code", "stolen").param("state", "guessed")
                         .cookie(new Cookie("oauth_state", "guessed")))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", startsWith("http://localhost:3000/login#error=")));
+                .andExpect(header().string("Location", startsWith("http://localhost:1000/login#error=")));
     }
 
     @Test

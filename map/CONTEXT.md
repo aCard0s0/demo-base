@@ -7,8 +7,8 @@ file its `See` names. Never load a whole cluster: the index exists so you do not
 
 | Universe | Meaning | Here |
 |---|---|---|
-| **live** | in force; implement and cite against it | the three services, the six libs, `apps/web`, compose + Dockerfile, `./demo-base` |
-| **leftover** | present, not the main path | comments in agent-service about its Flyway era (`application.properties`, `001-init.sql`): the schema is Liquibase now; todo-service's `ddl-auto=update`, the one service without a changelog |
+| **live** | in force; implement and cite against it | the three services, the six libs, `apps/web`, compose + Dockerfile, `./dbase` |
+| **leftover** | present, not the main path | comments in agent-service about its Flyway era (`application.properties`, `001-init.sql`): the schema is Liquibase now |
 | **ghost** | named, not wired | none known. `wallet-service` and the `data/` SQLite folder were ghosts and were removed |
 
 ## Card rules
@@ -23,10 +23,10 @@ file its `See` names. Never load a whole cluster: the index exists so you do not
 ## Layout of the subject
 
 ```
-apps/auth-service   users, sign-in, tokens          :9081   Liquibase   README per service
-apps/todo-service   todos + their MCP server        :9082   ddl-auto
-apps/agent-service  agents, MCP gateway             :9083   Liquibase
-apps/web            Angular pages                   :3000
+apps/auth-service   users, sign-in, tokens          :1001   Liquibase   README per service
+apps/todo-service   todos + their MCP server        :1002   Liquibase
+apps/agent-service  agents, MCP gateway             :1003   Liquibase
+apps/web            Angular pages                   :1000
 libs/*              auth-client, web-errors, mcp-server, outbound-urls, jpa-crypto, auth-provider
-compose.yaml · Dockerfile · docker/ · .env.example · demo-base (CLI)
+compose.yaml · Dockerfile · docker/ · .env.example · dbase (CLI)
 ```

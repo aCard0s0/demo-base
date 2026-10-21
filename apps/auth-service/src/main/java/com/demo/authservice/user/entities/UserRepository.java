@@ -37,6 +37,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
     int reRegister(String email, String name, String hash);
 
     /**
+     * An admin's new user over an address nobody proved: the row becomes that user, proven, active and with the
+     * admin's password and role, and anything ever signed for it dies. 0 if it was proven in the meantime.
+     */
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("update User u set u.name = :name, u.passwordHash = :hash, u.passwordSet = true, u.emailVerified = true, "
+            + "u.suspended = false, u.role = :role, u.tokenVersion = u.tokenVersion + 1 "
+            + "where u.email = :email and u.emailVerified = false")
+    int takeOver(String email, String name, String hash, Role role);
+
+    /**
      * A provider vouched for the address of a user nobody proved: whoever set its password does not own the
      * address, so the password goes and the user becomes the provider's. 0 if it was proven in the meantime.
      */

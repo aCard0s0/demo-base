@@ -23,6 +23,11 @@
   margin: 0 0 $spacing-md;
 }
 
+// A form folded above a list (the users page's "New user"), kept off the first row.
+.new-user[open] {
+  margin-bottom: $spacing-lg;
+}
+
 .row-actions {
   display: flex;
   flex-wrap: wrap;

@@ -86,7 +86,7 @@
           },
           "defaultConfiguration": "development",
           "options": {
-            "port": 3000,
+            "port": 1000,
             "proxyConfig": "proxy.conf.json"
           }
         },

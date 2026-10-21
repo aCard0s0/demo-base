@@ -5,6 +5,14 @@ import { User } from '../auth/auth';
 
 export type Role = User['role'];
 
+/** An admin's new user: no link is mailed, the admin hands the password over. */
+export interface NewUser {
+  name: string;
+  email: string;
+  password: string;
+  role: Role;
+}
+
 /** auth-service's view of everyone: reading is for admins and moderators, every change is the admin's alone. */
 @Injectable({ providedIn: 'root' })
 export class Users {
@@ -12,6 +20,10 @@ export class Users {
 
   list(): Promise<User[]> {
     return firstValueFrom(this.http.get<User[]>('/api/users'));
+  }
+
+  create(user: NewUser): Promise<User> {
+    return firstValueFrom(this.http.post<User>('/api/users/create', user));
   }
 
   /** A changed role also revokes the user's tokens: the role rides inside them. */

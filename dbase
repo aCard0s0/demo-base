@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# demo-base — the one script that runs this repo: build, test, run from source, and drive the compose stack.
-# Copying this repo to start another project? Rename this file and the DEMO_BASE_* prefix with it.
+# dbase — the one script that runs this repo: build, test, run from source, and drive the compose stack.
+# Copying this repo to start another project? Rename this file and the DBASE_* prefix with it.
 #
 # HOW TO ADD A COMMAND (agents: read this before editing anything below)
 #  1. Add ONE row to the COMMANDS registry:  name|alias|args|summary. A namespaced
@@ -15,7 +15,7 @@
 #  4. Side effects go through `run` (free --dry-run/--verbose), destructive ones
 #     through `confirm` (free --yes, plus refusal on non-interactive stdin).
 #  Invariants: no logic in the dispatcher; one arg-parsing idiom (while/case/shift);
-#  targets are arguments to verbs (`./demo-base start web`, never `./demo-base web`); human text
+#  targets are arguments to verbs (`./dbase start web`, never `./dbase web`); human text
 #  only via say/note/step/warn/die — stdout carries values, stderr carries prose.
 #  bash 3.2 (stock macOS): no associative arrays, no ${var,,}, no mapfile, and never a
 #  bare "${a[@]}" that may be empty — write ${a[@]+"${a[@]}"}.
@@ -32,7 +32,7 @@ cd "$ROOT"
 # ── config: every knob env-overridable, every name prefixed with the tool ──
 # Compose is run from the repo root with no -f, so it picks up compose.yaml, the local compose.override.yaml and
 # .env exactly as a bare `docker compose` typed here would. COMPOSE_PROJECT_NAME is compose's own knob.
-ENV_FILE="${DEMO_BASE_ENV_FILE:-$ROOT/.env}"
+ENV_FILE="${DBASE_ENV_FILE:-$ROOT/.env}"
 SERVICES="db db-init auth-service mailpit todo-service agent-service web"   # compose targets
 DEV_TARGETS="auth-service todo-service agent-service web"                   # what `dev` can run from source
 SUITES="java web"
@@ -107,7 +107,7 @@ EOF
   reg | awk -F'|' -v b="$BOLD" -v r="$RST" '
     /^#/ { printf "\n%s%s%s\n", b, substr($0,2), r; next }
     NF>1 { c=$1; if ($2!="") c=c ", " $2; printf "  %-18s %s\n", c, $4 }'
-  printf '\nServices: %s\nSuites:   %s\nConfig:   DEMO_BASE_ENV_FILE=%s  (also COMPOSE_PROJECT_NAME, NO_COLOR)\n' \
+  printf '\nServices: %s\nSuites:   %s\nConfig:   DBASE_ENV_FILE=%s  (also COMPOSE_PROJECT_NAME, NO_COLOR)\n' \
     "$SERVICES" "$SUITES" "$ENV_FILE"
 }
 cmd_help() {
@@ -140,6 +140,16 @@ require_node() {
 }
 require_node_modules() {
   [ -d "$ROOT/apps/web/node_modules" ] || die "apps/web has no node_modules — run ./$PROG setup" 4
+}
+# A fresh RSA 2048 private key for auth-service's tokens, base64 PKCS#8 on one line.
+signing_key() { openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | sed '/-----/d' | tr -d '\n'; }
+# Whether .env names a signing key: a value, not a blank or a pair of empty quotes.
+has_signing_key() { grep -Eq "^AUTH_SIGNING_KEY=[\"']?[A-Za-z0-9+/]" "$ENV_FILE" 2>/dev/null; }
+# A new signing key in .env, in place (a symlinked .env stays one) and with no copy left beside it.
+write_signing_key() {
+  local key rest; key=$(signing_key || true); [ -n "$key" ] || die "openssl made no signing key; .env left as it was" 1
+  rest=$(grep -av '^AUTH_SIGNING_KEY=' "$ENV_FILE" || true)
+  chmod 600 "$ENV_FILE"; printf '%s\nAUTH_SIGNING_KEY=%s\n' "$rest" "$key" > "$ENV_FILE"
 }
 port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 run() { if [ -n "$DRY_RUN$VERBOSE" ]; then note "+ $*"; fi; if [ -n "$DRY_RUN" ]; then return 0; fi; "$@"; }
@@ -176,18 +186,22 @@ cmd_setup() {
     esac
     shift
   done
-  require_node
+  require_node; have openssl || die "openssl is not on PATH — it makes auth-service's signing key" 3
   if [ -f "$ENV_FILE" ]; then note "kept $ENV_FILE"
   else step "seeding $ENV_FILE from .env.example"; run cp "$ROOT/.env.example" "$ENV_FILE"; fi
+  if ! has_signing_key; then   # absent or blank: a blank line is replaced
+    step "adding an RSA signing key for auth-service's tokens to $ENV_FILE"
+    [ -n "$DRY_RUN" ] || write_signing_key
+  fi
   if [ -f "$ROOT/compose.override.yaml" ]; then note "kept compose.override.yaml"
-  else step "writing compose.override.yaml (db on 127.0.0.1:5432, for running services from source)"
+  else step "writing compose.override.yaml (db on 127.0.0.1:1006, for running services from source)"
     if [ -z "$DRY_RUN" ]; then cat > "$ROOT/compose.override.yaml" <<'EOF'
-# Local-only access to Postgres, for the services run from source (./demo-base dev) or a DB client.
+# Local-only access to Postgres, for the services run from source (./dbase dev) or a DB client.
 # Bound to loopback on purpose: a bare "5432:5432" would expose the default passwords and bypass the host firewall.
 services:
   db:
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:1006:5432"
 EOF
     fi
   fi
@@ -195,7 +209,8 @@ EOF
   else step "installing web dependencies"; (cd "$ROOT/apps/web" && run npm ci --no-audit --no-fund); fi
   say "ready — next: ./$PROG start"
 }
-cmd_setup_help() { say "  Never overwrites .env or compose.override.yaml, --force included; --force only redoes npm ci."; }
+cmd_setup_help() { say "  Never overwrites .env or compose.override.yaml, --force included, beyond the signing key below; --force only redoes npm ci."
+                   say "  Adds AUTH_SIGNING_KEY to .env when it has none or a blank one, so tokens outlive a restart."; }
 cmd_doctor() {
   no_args "$@"; local missing="" broken="" v
   say "root      $ROOT"
@@ -209,6 +224,8 @@ cmd_doctor() {
   if have docker && ! docker info >/dev/null 2>&1; then warn "daemon    not running — start Docker Desktop"; broken=1
   elif have docker; then say "daemon    running"; fi
   if [ -f "$ENV_FILE" ]; then say "env       $ENV_FILE"; else note "env       none — every setting keeps its dev default (./$PROG setup seeds one)"; fi
+  if has_signing_key; then say "signing   AUTH_SIGNING_KEY set"; else warn "signing   no AUTH_SIGNING_KEY — a restart voids every token: ./$PROG setup adds one"; fi
+  if ! have openssl; then warn "openssl   missing — ./$PROG setup needs it to make the signing key"; missing=1; fi
   if [ -d "$ROOT/apps/web/node_modules" ]; then say "web deps  installed"; else warn "web deps  missing — ./$PROG setup"; broken=1; fi
   if [ -n "$missing" ]; then exit 3; fi
   if [ -n "$broken" ]; then exit 4; fi
@@ -219,7 +236,7 @@ cmd_build() { no_args "$@"; require_java; require_node
   step "building every module"; mvnw package -DskipTests
   say "jars: apps/*/target/*.jar · web: apps/web/dist/web/browser"; }
 cmd_test() {
-  local suites=() pass=() s
+  local suites=() pass=() scope=() s a
   while [ $# -gt 0 ]; do
     case "$1" in
       --) shift; pass=("$@"); break ;;
@@ -233,7 +250,9 @@ cmd_test() {
     case "$s" in
       java) require_java
             if ! docker info >/dev/null 2>&1; then warn "Docker is not running: PostgresIntegrationTests will be skipped, not run"; fi
-            step "java tests"; mvnw test -pl '!apps/web' ${pass[@]+"${pass[@]}"} ;;
+            # npm's module stays out, unless the caller picks modules itself: Maven refuses a second -pl list.
+            scope=(-pl '!apps/web'); for a in ${pass[@]+"${pass[@]}"}; do case "$a" in -pl|--projects|--projects=*) scope=() ;; esac; done
+            step "java tests"; mvnw test ${scope[@]+"${scope[@]}"} ${pass[@]+"${pass[@]}"} ;;
       web)  require_node; require_node_modules
             step "web tests"; (cd "$ROOT/apps/web" && run npm test -- --watch=false ${pass[@]+"${pass[@]}"}) ;;
     esac
@@ -246,18 +265,23 @@ cmd_dev() {
   local svc="$1"; in_list "$svc" "$DEV_TARGETS" || die "cannot run $svc from source. Valid: $DEV_TARGETS" 2
   if [ "$svc" = web ]; then
     require_node; require_node_modules
-    step "web on http://localhost:3000 (proxies /api and /mcp to the services on 9081-9083)"
+    step "web on http://localhost:1000 (proxies /api and /mcp to the services on 1001-1003)"
     cd "$ROOT/apps/web"; run npm start; return 0
   fi
   require_java
-  port_open 5432 || die "nothing on localhost:5432 — ./$PROG setup (for the port), then ./$PROG start db db-init" 4
+  port_open 1006 || die "nothing on localhost:1006 — ./$PROG setup (for the port), then ./$PROG start db db-init" 4
   load_env
+  # auth-service's own secrets stay with it, as in compose; its Mailpit is the one compose publishes on loopback.
+  if [ "$svc" = auth-service ]; then
+    if [ -z "${SPRING_MAIL_HOST:-}" ]; then export SPRING_MAIL_HOST=localhost SPRING_MAIL_PORT=1005
+      port_open 1005 || warn "nothing on localhost:1005 (Mailpit's SMTP): signup mail will fail — ./$PROG start mailpit"; fi
+  else unset AUTH_SIGNING_KEY AUTH_EMAIL_LINK_KEY ADMIN_PASSWORD; fi
   step "$svc from source (.env loaded if present)"
   mvnw -q package -DskipTests -pl "apps/$svc" -am
   # ponytail: no reload on change for the Java services; Ctrl-C and rerun. spring-boot-devtools is the upgrade.
   run java -jar "$ROOT/apps/$svc/target/$svc-0.0.1-SNAPSHOT.jar"
 }
-cmd_dev_help() { say "  Start the database first: ./$PROG start db db-init (with the port ./$PROG setup publishes)."
+cmd_dev_help() { say "  Start the database first: ./$PROG start db db-init mailpit (with the ports ./$PROG setup publishes)."
                  say "  Services need each other too: auth-service first, then todo-service and agent-service."; }
 cmd_clean() {
   local all=""
@@ -285,7 +309,11 @@ endpoints() {
   if [ -n "$web" ]; then say "web:     http://$web"; fi
   if [ -n "$mail" ]; then say "mailpit: http://$mail"; fi
 }
-do_up() { step "starting ${TARGETS[*]:-everything}"
+do_up() {
+  if [ ${#TARGETS[@]} -eq 0 ] || in_list auth-service "${TARGETS[*]}"; then
+    has_signing_key || warn "no AUTH_SIGNING_KEY in .env: a restart voids every token — ./$PROG setup adds one"
+  fi
+  step "starting ${TARGETS[*]:-everything}"
   compose up -d --wait ${OPT_BUILD:+--build} ${TARGETS[@]+"${TARGETS[@]}"}   # --wait health-gates
   [ -n "$DRY_RUN" ] || endpoints; }
 cmd_start() { parse_targets "--build" "$@"; require_docker; do_up; }
@@ -327,11 +355,16 @@ cmd_down() {
     shift
   done
   require_docker
-  if [ -n "$vols" ]; then confirm "delete the database volume (every user, todo and agent)? this cannot be undone"; fi
+  if [ -n "$vols" ]; then confirm "delete the database volume (every user, todo and agent)? this cannot be undone"
+    if has_signing_key; then have openssl || die "openssl is not on PATH — -v replaces the signing key with it" 3; fi; fi
   f=(down --remove-orphans); [ -z "$vols" ] || f+=(--volumes)
-  compose "${f[@]}"; say "removed containers and network${vols:+, and the database volume}"
+  compose "${f[@]}"
+  # A new database hands the same ids to other people: a token signed for the old ones must not fit them.
+  if [ -n "$vols" ] && has_signing_key; then step "replacing AUTH_SIGNING_KEY in $ENV_FILE"; [ -n "$DRY_RUN" ] || write_signing_key; fi
+  say "removed containers and network${vols:+, and the database volume}"
 }
-cmd_down_help() { say "  Halt without removing is \`./$PROG stop\`; build output is \`./$PROG clean\`."; }
+cmd_down_help() { say "  Halt without removing is \`./$PROG stop\`; build output is \`./$PROG clean\`."
+                  say "  -v also replaces AUTH_SIGNING_KEY in .env, so no token outlives the users it named."; }
 cmd_db_shell() {
   [ $# -le 1 ] || die "db shell takes at most one database (got: $*)" 2
   local db="${1:-postgres}"

@@ -4,8 +4,28 @@ Multi-module Maven project: three Spring Boot services and an Angular frontend. 
 todos in another, user-owned agents -- each an MCP server with permissioned tools that Claude Code or any MCP client
 connects to -- in a third, and an RS256 token handoff between them instead of a per-request call.
 
+## Quick start
+
+Needs Docker and openssl (for the signing key `setup` writes); Java 26 and Node 24+ only to build or test
+outside it (`./dbase doctor` checks).
+
+```bash
+./dbase setup         # .env from .env.example plus a signing key, the local db port, npm ci
+./dbase start --build # the whole stack, waits for healthy, prints the URLs
 ```
-demo-base               the project CLI: setup, build, test, dev, start/stop/status/logs/down
+
+Then http://localhost:1000, signing in as the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`
+([The admin user](#the-admin-user)); signup mail lands in Mailpit at http://localhost:1004. `./dbase` bare
+lists every command, `./dbase test` runs every suite with nothing up.
+
+**Contents:** [Layout](#layout) · [Glossary](#glossary) · [Package convention](#package-convention) ·
+[Run](#run) · [Roles](#roles) · [Agents](#agents) · [Signing in with a provider](#signing-in-with-a-provider) ·
+[How the services trust each other](#how-the-services-trust-each-other) · [Endpoints](#endpoints)
+
+## Layout
+
+```
+dbase                   the project CLI: setup, build, test, dev, start/stop/status/logs/down
 pom.xml                 parent (packaging: pom)
 compose.yaml            db + the three services + Mailpit + the web on nginx
 Dockerfile              one file: one Maven build, three JVM runtime stages, and the web (node build, nginx)
@@ -18,10 +38,10 @@ libs/mcp-server         the stateless /mcp endpoint and tool-argument parsing
 libs/outbound-urls      which URLs a service may be pointed at by a user: public addresses only, the deployment's own by name
 libs/jpa-crypto         a text column encrypted at rest, as a JPA converter, and the migration that catches up old rows
 libs/auth-provider      sign-in with a provider: the flow in core/, one jar per provider (google, github, microsoft, apple, x, linkedin, discord)
-apps/auth-service       users, login, OAuth, roles, tokens       :9081
-apps/todo-service       per-user todos, and their MCP server     :9082
-apps/agent-service      agents, their MCP servers, permissions   :9083
-apps/web                Angular frontend: login, profile, users, agents :3000
+apps/auth-service       users, login, OAuth, roles, tokens       :1001
+apps/todo-service       per-user todos, and their MCP server     :1002
+apps/agent-service      agents, their MCP servers, permissions   :1003
+apps/web                Angular frontend: login, profile, users, agents :1000
 ```
 
 Each service documents itself:
@@ -59,8 +79,8 @@ Two rules hold across all of them:
 
 - **The arrows point one way.** `token` knows nothing about users (it signs an id, an email, a name and a
   role -- not a `User`), `user` uses `token` to resolve a caller, and `session` uses both to turn a
-  password into one. The verifying half of `token` lives once, in the `libs/auth-client` library, and the three
-  services that check tokens in process depend on it rather than carrying a copy each.
+  password into one. The verifying half of `token` lives once, in the `libs/auth-client` library, and the two
+  services that check tokens in process (todo and agent) depend on it rather than carrying a copy each.
 - **`stats` is the unauthenticated corner** of each service, kept apart so the trust boundary is visible in
   the tree rather than buried in a comment, and **`support`** holds the one cross-cutting piece each service
   has: the advice that renders every rejection as `{"error": "..."}`. It extends `ErrorBodyAdvice` from
@@ -68,49 +88,48 @@ Two rules hold across all of them:
 
 ## Run
 
-`./demo-base` is the one script for this repo: run it bare for every command. The short version:
-
-```bash
-./demo-base setup         # .env from .env.example, the local db port, npm ci
-./demo-base start --build # the whole stack, waits for healthy, prints the URLs
-```
-
-Or by hand:
+[Quick start](#quick-start) is the scripted way. By hand:
 
 ```bash
 cp .env.example .env      # optional: without it every setting keeps its development default
 docker compose up -d --build --wait
 ```
 
-http://localhost:3000. Containers: `db`, `auth-service`, `todo-service`, `agent-service`, `mailpit` (the mail
-auth-service sends -- signup and change-of-email links -- at http://localhost:8025) and `web`, nginx serving the
+http://localhost:1000. Containers: `db`, `auth-service`, `todo-service`, `agent-service`, `mailpit` (the mail
+auth-service sends -- signup and change-of-email links -- at http://localhost:1004) and `web`, nginx serving the
 Angular build and routing `/api` and `/mcp` like the dev server ([docker/nginx.conf](docker/nginx.conf)). A
-seventh, `db-init`, creates any missing database and role, then exits. Only `web` and `mailpit` publish a port,
+seventh, `db-init`, creates any missing database and role, then exits. Each container is `demo-base-<service>`
+(`COMPOSE_PROJECT_NAME` swaps the prefix). Only `web` and `mailpit` publish a port,
 both on loopback; the services and the database talk over the compose network. `docker compose down -v` also
-drops the database volume.
+drops the database volume; `./dbase down -v` also replaces `AUTH_SIGNING_KEY` in `.env`, since a new database
+hands the same user ids to other people.
 
-`./mvnw test` runs the Maven suite, the Angular tests included, without needing anything up (it does need Node 24
+`./mvnw test` (or `./dbase test`) runs the Maven suite, the Angular tests included, without needing anything up (it does need Node 24
 and npm on the `PATH`; `./mvnw test -pl '!apps/web'` skips the frontend).
 
 To run from source you still need the database, so start that one container with its port published
-(`compose.override.yaml`, git-ignored, maps it to 127.0.0.1:5432) and point the services at localhost -- which
-is what their `application.properties` already say:
+(`compose.override.yaml`, git-ignored, maps it to 127.0.0.1:1006) and point the services at localhost -- which
+is what their `application.properties` already say. `./dbase dev <service>` runs one in the foreground;
+by hand, all of them:
 
 ```bash
 docker compose up -d db-init   # db, plus its databases and roles
 ./mvnw package -DskipTests
 set -a; . ./.env; set +a       # if you made one
 java -jar apps/auth-service/target/auth-service-0.0.1-SNAPSHOT.jar &
+unset AUTH_SIGNING_KEY AUTH_EMAIL_LINK_KEY ADMIN_PASSWORD   # auth-service's alone, as in compose
 java -jar apps/todo-service/target/todo-service-0.0.1-SNAPSHOT.jar &
 java -jar apps/agent-service/target/agent-service-0.0.1-SNAPSHOT.jar &
-cd apps/web && npm start       # http://localhost:3000
+cd apps/web && npm start       # http://localhost:1000
 ```
 
 The dev server proxies `/api/agents`, `/api/public/agents` and `/mcp` to agent-service, `/api/todos` and
 `/api/public/todos` to todo-service, and the rest of `/api` to auth-service
-([proxy.conf.json](apps/web/proxy.conf.json)). Port 3000 is also the OAuth redirect base, so keep it unless
+([proxy.conf.json](apps/web/proxy.conf.json)). Port 1000 is also the OAuth redirect base, so keep it unless
 `OAUTH_REDIRECT_BASE_URL` changes with it. With no mail server (`SPRING_MAIL_HOST`) signup and email changes are
-refused; `docker compose up -d mailpit` and `SPRING_MAIL_HOST=localhost SPRING_MAIL_PORT=1025` give you one.
+refused; `./dbase dev auth-service` uses the stack's Mailpit (SMTP on `localhost:1005`, warning when nothing is
+there) unless `SPRING_MAIL_HOST` is set, and by hand `docker compose up -d mailpit` plus
+`SPRING_MAIL_HOST=localhost SPRING_MAIL_PORT=1005` do the same.
 
 ### Databases
 
@@ -118,16 +137,15 @@ Postgres, with a database and a role per service (`auth`/`auth`, `todo`/`todo`, 
 created by `docker/initdb.sql`), so no service can read another's tables even by accident. The credentials are
 development values and `db` publishes at most a loopback port (compose.override.yaml); change them first.
 
-auth-service and agent-service own their schema as Liquibase changesets (`src/main/resources/db/changelog`) and
-Hibernate only validates it; a new column is a new changeset, never an entity change alone. todo-service still
-lets Hibernate `ddl-auto=update` it.
+Every service owns its schema as Liquibase changesets (`src/main/resources/db/changelog`) and Hibernate only
+validates it; a new column is a new changeset, never an entity change alone.
 
 `docker/initdb.sql` is run by `db-init`, a one-shot container every service waits on, on each `up` rather
 than only when the volume is created. It creates only what is missing, so a service added later gets its
 database on the volume you already have, with no `db reset`.
 
 Tests are the exception: they run against a throwaway SQLite file so `./mvnw test` needs nothing installed
-or running. `PostgresIntegrationTests` in auth- and agent-service are the exception to the exception: they start
+or running. `PostgresIntegrationTests` in each service are the exception to the exception: they start
 a throwaway Postgres container to run the real changesets, and skip, rather than fail, without Docker.
 
 ### Resources
@@ -148,20 +166,20 @@ percentages:
 | web | 32m | ~10 MiB (31%) idle | 0.5 |
 
 The JVM services are the floor, not the ceiling: a JVM's resident size is mostly metaspace, code cache,
-thread stacks and the GC's own structures, none of which shrink much for a small application. Both run
+thread stacks and the GC's own structures, none of which shrink much for a small application. All three run
 with `-XX:MaxRAMPercentage=50`, so the heap is half the limit and the rest of that list has somewhere to
 live -- the JVM reads the cgroup limit, so `mem_limit` is what actually sizes the heap. Postgres cannot go
 much under 192m either, because `shared_buffers` alone defaults to 128MB.
 
-`cpus` matters most at startup, which is the only CPU-hungry moment either service has; BCrypt at cost 10
-is the other, at roughly a tenth of a second per login.
+`cpus` matters most at startup, the main CPU-hungry moment each service has; BCrypt at cost 10 in
+auth-service is the other, at roughly a tenth of a second per login.
 
 To re-measure after a change:
 
 ```bash
 docker compose up -d --build --wait
 docker stats --no-stream $(docker compose ps -q)
-docker inspect demo-base-auth-service-1 --format '{{.State.OOMKilled}}'
+docker inspect demo-base-auth-service --format '{{.State.OOMKilled}}'
 ```
 
 ## Roles
@@ -188,6 +206,7 @@ Endpoint by endpoint:
 | auth | `GET /api/users` | everyone | everyone | 403 | 403 |
 | auth | `PUT /api/users/{id}/role` | any user | 403 | 403 | 403 |
 | auth | `PUT /api/users/{id}/suspended` · `POST /api/users/{id}/revoke` | any user | 403 | 403 | 403 |
+| auth | `POST /api/users/create` | a new user, any role | 403 | 403 | 403 |
 | todo | `GET /api/todos` | everyone's | everyone's | 403; over MCP its owner's | own |
 | todo | `POST /api/todos` | own | own | 403; over MCP its owner's, if WRITE | own |
 | todo | `PUT`/`PATCH`/`DELETE /api/todos/{id}` | anyone's | own, else 404 | 403; over MCP its owner's, if WRITE | own |
@@ -204,8 +223,8 @@ them. The endpoints that take no token at all -- registration, login, the OAuth 
 `/api/jwks.json` -- are unaffected, since there is no token to refuse.
 
 Registration always produces a `USER` -- `POST /api/users` has no role field to ask with, and
-`PUT /api/users/me` cannot change one. `PUT /api/users/{id}/role` is the single door off `USER`, and
-only an admin may open it. An admin cannot demote itself, because the last one doing so would leave nobody
+`PUT /api/users/me` cannot change one. `PUT /api/users/{id}/role` and `POST /api/users/create` are the only doors
+off `USER`, and only an admin may open either. An admin cannot demote itself, because the last one doing so would leave nobody
 able to promote anybody ever again.
 
 The two services answer "what role is this?" differently, on purpose:
@@ -225,8 +244,9 @@ log straight back in). An admin cannot suspend itself.
 Both work through a per-user token version, stamped into every token as `ver` and bumped on revoke or
 suspend. auth-service compares it on every request, so both bite there at once. todo- and
 agent-service poll `/internal/token-versions` at most every 10 seconds and turn away any token older than
-the user's last revocation. That path is meant for the compose network only; if
-auth-service is unreachable they keep the last list they had.
+the user's last revocation. That path is meant for the compose network only. If auth-service is unreachable
+the last list stands for five minutes after the last good read, then every token is refused until a read
+succeeds; before the first good read nothing passes.
 
 An owner can also revoke **one agent's tokens** alone, with **Revoke tokens** on the agent's page
 (`POST /api/agents/{id}/token/revoke`). That bumps a per-agent version auth-service keeps and stamps into
@@ -249,7 +269,7 @@ first three things to set anywhere else.
 Seeding is **create-only**: an address that already exists is promoted to `ADMIN`, but its password is left
 exactly as it is, so a restart cannot quietly reset a password the admin has since changed and a stale
 `.env` cannot hand the admin back. Change it from `/profile` like any other user; to start over,
-`docker compose down --volumes`.
+`./dbase down -v`, which also replaces the signing key so no old token fits a new user.
 
 Details, including why it is not in `docker/initdb.sql`, are in the
 [auth-service README](apps/auth-service/README.md#the-seeded-admin).
@@ -262,7 +282,7 @@ From `/agents`, any user creates as many **agents** as they like. An agent is a 
 Claude Code, Cursor or any MCP client connects to it and gets exactly the tools those permissions allow.
 
 ```bash
-claude mcp add --transport http todos "http://localhost:3000/mcp?agent=<id>" --header "Authorization: Bearer <token>"
+claude mcp add --transport http todos "http://localhost:1000/mcp?agent=<id>" --header "Authorization: Bearer <token>"
 ```
 
 The token is either the owner's own login token (30 minutes) or one made with **Create token** on the
@@ -282,8 +302,9 @@ the agent's activity log on the same page.
 
 todo-service exposes its todos over MCP at `/mcp`, with `list_todos` read-only and `add_todo`, `update_todo`,
 `delete_todo` not, and is the one server compose trusts by default (`AGENTS_TRUSTED_SERVER_URLS`,
-`http://todo-service:9082/mcp`). An owner adds it to an agent by that URL and may have the caller's token
-forwarded to it, so the agent acts **as its owner** and can only ever see the owner's todos. Any other
+`http://todo-service:1002/mcp`). An owner adds it to an agent by that URL, and the caller's token is forwarded
+to it unless the owner gives a header instead or turns forwarding off, so the agent acts **as its owner** and
+can only ever see the owner's todos. Any other
 Streamable HTTP MCP server can be added by URL, with an optional authorization header, which is encrypted at
 rest with `AGENTS_AUTH_HEADER_KEY`. The owner's token is never forwarded to one of those: it is good everywhere,
 so it goes only to the deployment's own servers (`AGENTS_TRUSTED_SERVER_URLS`).
@@ -309,7 +330,7 @@ page. `.env.example` lists the settings, and
 [getting a client id and secret](apps/auth-service/README.md#getting-a-client-id-and-secret) walks through
 every console.
 
-Register `http://localhost:3000/api/oauth/<provider>/callback` as the callback URL with the provider,
+Register `http://localhost:1000/api/oauth/<provider>/callback` as the callback URL with the provider,
 exactly as written. Serving the frontend from another address means changing `OAUTH_REDIRECT_BASE_URL` and
 the registered URI together -- a provider rejects a `redirect_uri` it does not already know.
 
@@ -326,10 +347,11 @@ has no usable password are in the
 
 ## How the services trust each other
 
-auth-service generates an RSA keypair at startup and signs RS256 JWTs with the private half. It publishes
-only the public half, at `/api/jwks.json`. todo-service fetches that once, caches it, and verifies every
-token in process -- so it never calls auth-service per request, and holding only the public key it could
-never mint a token of its own. Its key selector is pinned to RS256, so a token asking for `none` or a
+auth-service signs RS256 JWTs with an RSA private key: `AUTH_SIGNING_KEY` (base64 PKCS#8, which
+`./dbase setup` writes to `.env`), or, when that is blank, a keypair it generates at startup. It publishes
+only the public half, at `/api/jwks.json`. todo- and agent-service fetch that once, cache it, and verify every
+token in process -- so neither calls auth-service per request, and holding only the public key neither could
+mint a token of its own. Their key selector is pinned to RS256, so a token asking for `none` or a
 symmetric algorithm is rejected before its signature is looked at.
 
 The consequences worth knowing:
@@ -337,8 +359,10 @@ The consequences worth knowing:
 - **There is no logout endpoint.** A signed token is good until it expires; logging out is the browser
   dropping the token it holds. `auth.token-ttl` (default 30m) is the real bound -- unless an admin revokes
   the user's tokens, see [Suspending and revoking](#suspending-and-revoking).
-- **A restart invalidates every token in flight**, because it mints a new keypair. Users and todos are
-  not affected. Nothing is written to disk, so there is no private key in this repo to leak.
+- **With `AUTH_SIGNING_KEY` blank, a restart invalidates every token in flight**, because it mints a new
+  keypair. Users and todos are not affected, nor are agents, though their 30-day tokens die too. Set, tokens
+  outlive a restart, and the private key lives in `.env` -- git-ignored, and mode 600 once `./dbase` has
+  written it -- never in this repo.
 - The key carries a `kid`, so adding a second key later is additive rather than a breaking change.
 
 ## Endpoints
@@ -354,6 +378,7 @@ The consequences worth knowing:
 | auth | PUT | `/api/users/{id}/role` | yes -- admin only |
 | auth | PUT | `/api/users/{id}/suspended` | yes -- admin only |
 | auth | POST | `/api/users/{id}/revoke` | yes -- admin only |
+| auth | POST | `/api/users/create` | yes -- admin only; no link is mailed, the user signs in at once |
 | auth | GET | `/internal/token-versions` | no -- compose network only, never proxied; users by id, agents as `agent:<id>` |
 | auth | POST | `/internal/agent-tokens` · `/internal/agent-tokens/{agentId}/revoke` | `X-Internal-Secret` -- compose network only, never proxied; agent-service asks |
 | auth | GET | `/api/oauth/providers` | no |
@@ -379,14 +404,16 @@ Request and response bodies are in each service's README:
 [agent-service](apps/agent-service/README.md#endpoints).
 
 The token travels in the `Authorization: Bearer <token>` header rather than a query parameter so it stays
-out of access logs and Referer headers. Rejected input comes back as `{"error": "..."}` from both services,
+out of access logs and Referer headers. Rejected input comes back as `{"error": "..."}` from all three services,
 which is what the pages render.
 
 No service sets CORS headers: the frontend sits behind one origin that proxies `/mcp` and `/api/agents*` to
 agent-service, `/api/todos*` to todo-service and the rest of `/api/*` to auth-service, and never `/internal` --
 the dev server's [proxy.conf.json](apps/web/proxy.conf.json) and the web image's [nginx.conf](docker/nginx.conf).
 
-Ports 9081-9083 rather than 8081-8083: Docker holds those on this machine. Override with `server.port`.
+Every port is 100X: web 1000, auth-service 1001, todo-service 1002, agent-service 1003, Mailpit 1004 (SMTP 1005),
+Postgres 1006. Below 1024, so on Linux a service run from source needs `sysctl net.ipv4.ip_unprivileged_port_start=1000`
+(macOS and the containers need nothing). Override with `server.port`.
 todo-service and agent-service find the signing key through `auth.jwks-uri` (`AUTH_JWKS_URI` in compose) and revocations
 through `auth.token-versions-uri` (`AUTH_TOKEN_VERSIONS_URI`); agent-service finds the servers it may reach by compose name
 through `agents.trusted-server-urls` (`AGENTS_TRUSTED_SERVER_URLS`) and the token minter through

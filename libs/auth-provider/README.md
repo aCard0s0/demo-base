@@ -44,7 +44,7 @@ deployment configured:
 
 | Property | Default |
 |---|---|
-| `oauth.redirect-base-url` | `http://localhost:3000` -- the address the browser uses, so the one the provider redirects to |
+| `oauth.redirect-base-url` | `http://localhost:1000` -- the address the browser uses, so the one the provider redirects to |
 | `oauth.callback-path` | `/api/oauth/{provider}/callback` -- under the base; `{provider}` is the key |
 | `oauth.<key>.enabled` | `false` |
 | `oauth.<key>.client-id` / `.client-secret` | empty -- and empty means off, even when enabled |

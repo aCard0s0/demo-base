@@ -44,7 +44,7 @@
             <artifactId>web-errors</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- JwtVerifier, Revocations and Caller: the one copy the three token-verifying services share. -->
+        <!-- JwtVerifier, Revocations and Caller: the one copy every token-verifying service shares. -->
         <dependency>
             <groupId>com.demo</groupId>
             <artifactId>auth-client</artifactId>

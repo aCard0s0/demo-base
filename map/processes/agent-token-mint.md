@@ -29,13 +29,13 @@ blank one closes it. An agent token is refused by every REST controller, so it c
 1. Web: `apps/web/src/app/agents/agents.ts:129` posts `/api/agents/{id}/token` with the owner's bearer.
 2. `AgentController.token`, `apps/agent-service/src/main/java/com/demo/agentservice/agent/AgentController.java:95`; `Caller` resolution 403s an agent token, `libs/auth-client/src/main/java/com/demo/auth/client/CallerResolver.java:48`.
 3. Ownership: someone else's agent is 404, `apps/agent-service/src/main/java/com/demo/agentservice/agent/AgentService.java:65`.
-4. Relay: `AgentTokens.issue` posts `{userId, agentId}` with `X-Internal-Secret`, 2 s connect / 5 s read, any failure → 502, `apps/agent-service/src/main/java/com/demo/agentservice/token/AgentTokens.java:43`, `:68`. URI `AUTH_AGENT_TOKENS_URI`, `compose.yaml:115`.
+4. Relay: `AgentTokens.issue` posts `{userId, agentId}` with `X-Internal-Secret`, 2 s connect / 5 s read, any failure → 502, `apps/agent-service/src/main/java/com/demo/agentservice/token/AgentTokens.java:43`, `:68`. URI `AUTH_AGENT_TOKENS_URI`, `compose.yaml:135`.
 5. Secret check, constant-time, blank = closed → 403, `apps/auth-service/src/main/java/com/demo/authservice/internal/AgentTokenController.java:58`; endpoint `:43`.
-6. `UserService.issueAgentToken`: user must exist and not be suspended (404), `agentVer` read (0 if never revoked), `apps/auth-service/src/main/java/com/demo/authservice/user/UserService.java:290`.
-7. Signed with role `AGENT`, claims `agent` + `agentVer`, user's current `ver`, TTL `auth.agent-token-ttl` 30d: `apps/auth-service/src/main/java/com/demo/authservice/token/Tokens.java:76`, `:52`.
+6. `UserService.issueAgentToken`: user must exist and not be suspended (404), `agentVer` read (0 if never revoked), `apps/auth-service/src/main/java/com/demo/authservice/user/UserService.java:315`.
+7. Signed with role `AGENT`, claims `agent` + `agentVer`, user's current `ver`, TTL `auth.agent-token-ttl` 30d: `apps/auth-service/src/main/java/com/demo/authservice/token/Tokens.java:113`, `:64`. It outlives an auth-service restart only when `AUTH_SIGNING_KEY` is set, `Tokens.java:68-73`.
 8. Activity line "agent token issued", token returned, `AgentController.java:99`.
-9. Revoke: `agents.ts:133` → `AgentController.java:107` → `AgentTokens.revoke`, `AgentTokens.java:59` → `AgentTokenController.java:51` → `UserService.java:305` (upsert bump). Bites in todo-/agent-service on their next feed read, ≤10 s (see [verify-and-revoke](verify-and-revoke.md)).
-10. The token also dies with its owner's `ver` (revoke, suspend, role or password change), since it carries it, `Tokens.java:77`.
+9. Revoke: `agents.ts:133` → `AgentController.java:107` → `AgentTokens.revoke`, `AgentTokens.java:59` → `AgentTokenController.java:51` → `UserService.java:330` (upsert bump). Bites in todo-/agent-service on their next feed read, ≤10 s (see [verify-and-revoke](verify-and-revoke.md)).
+10. The token also dies with its owner's `ver` (revoke, suspend, role or password change), since it carries it, `Tokens.java:114`.
 
 ## If you change this
 
