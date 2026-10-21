@@ -1,6 +1,6 @@
 # auth-service
 
-Users, login, roles, and the RS256 keypair every other service verifies against. Port **9081**.
+Users, login, roles, and the RS256 keypair every other service verifies against. Port **1001**.
 
 It is the only service that writes to the `auth` database, and the only holder of the private signing key.
 Nothing here calls agent-service; the traffic goes the other way, and only for the public key.
@@ -13,7 +13,7 @@ together, so a change to one subject stays in one folder.
 ```
 user/      UserService  UserController  CurrentUserResolver  AdminSeeder  EmailLinks
   entities/  User  Role  UserRepository  AgentTokenVersion  AgentTokenVersionRepository
-  dto/       UserResponse  NewUser  UpdateUser  RoleChange  Suspension  EmailChange  EmailConfirmation  EmailVerification  EmailStep
+  dto/       UserResponse  NewUser  AdminNewUser  UpdateUser  RoleChange  Suspension  EmailChange  EmailConfirmation  EmailVerification  EmailStep
 session/   Session  SessionService  SessionController  LoginRequest  LoginResponse
 token/     Tokens  JwksController
 oauth/     OAuthController   (the flow and the providers are libs/auth-provider)
@@ -47,9 +47,11 @@ spans both services; what *this* service enforces is:
 | `GET /api/users` | everyone | everyone | 403 | 403 |
 | `PUT /api/users/{id}/role` | any user | 403 | 403 | 403 |
 | `PUT /api/users/{id}/suspended` · `POST /api/users/{id}/revoke` | any user | 403 | 403 | 403 |
+| `POST /api/users/create` | a new user, any role | 403 | 403 | 403 |
 
 Registration always produces a `USER`: `POST /api/users` has no role field to ask with, and
-`PUT /api/users/me` cannot change one. `PUT /api/users/{id}/role` is the single door off `USER`.
+`PUT /api/users/me` cannot change one. `PUT /api/users/{id}/role` and an admin's `POST /api/users/create` are
+the only doors off `USER`.
 
 Two rules worth knowing:
 
@@ -109,11 +111,13 @@ then have to be switched off. Only the hash is stored.
     link, at most three times per 15 minutes per email.
   - *An unproven address is free.* A signup over it replaces the name and password, so a squatter cannot keep
     the owner out; a provider sign-in for it *claims* it -- password wiped, `password_set` false, tokens
-    revoked. An unverified user never had a token, so nothing of the squatter's is left behind to inherit.
+    revoked; an admin's `POST /api/users/create` takes it over clean -- the admin's name, password and role,
+    proven, unsuspended, tokens revoked. An unverified user never had a token, so nothing of the squatter's is
+    left behind to inherit.
   - *A new email* is never written straight away. With a password, `PUT /api/users/me` mails the new address a
     link; for a provider-only user, see below. The link opens `/confirm-email#token=...`, a page with a button
     that posts to `POST /api/users/email-confirm` -- a button, because mail scanners open links on their own.
-  - Every write is one conditional statement (`UserRepository.verifyEmail`, `reRegister`, `claim`,
+  - Every write is one conditional statement (`UserRepository.verifyEmail`, `reRegister`, `takeOver`, `claim`,
     `moveEmail`), so a link spent twice, or a change that lands in between, writes nothing.
   - Users from before `email_verified` existed read `true`: they cannot be asked after the fact.
 - A login for an unknown email still runs one hash comparison against a dummy hash, so a missing user
@@ -199,9 +203,10 @@ The things worth knowing:
   on, so a bearer token that could repoint it at an address the bearer owns would be a permanent takeover.
   `POST /api/users/me/email` changes nothing: it mails the *current* address -- the one the owner proved to
   the provider -- a link approving the move. Approved, the new address gets its own link (see above), and
-  only that one makes the change. Each link is an HMAC under a key made at startup, good for 30 minutes,
-  and names the address it changes from, so it works once; a restart voids it, like every JWT. The next
-  provider sign-in is matched on the new address, so signing in with the old one afterwards makes a new user.
+  only that one makes the change. Each link is an HMAC under `auth.email-link-key` (`AUTH_EMAIL_LINK_KEY`;
+  blank, a random one per start, which a restart voids), good for 30 minutes, and names the address it changes
+  from, so it works once. The next provider sign-in is matched on the new address, so signing in with the old
+  one afterwards makes a new user.
 - **Every call to a provider is bounded** at 10 seconds to connect and 10 to answer, so a provider that
   hangs costs one failed sign-in and not a request thread for good.
 - **A disabled provider answers 404**, the same as an unknown one. Which providers a deployment configured
@@ -223,7 +228,7 @@ browser) -- except Apple, which hands out a private key instead, see below. The 
 app's page forever; the **secret is shown once**, at creation, so copy it straight into `.env`. No provider
 will show it again, and the fix for a lost one is to generate a replacement.
 
-The URLs below assume the default `http://localhost:3000`. On any other address, substitute it in the
+The URLs below assume the default `http://localhost:1000`. On any other address, substitute it in the
 callback URL *and* in `OAUTH_REDIRECT_BASE_URL`, together: a provider rejects a `redirect_uri` it was not
 given in advance, character for character.
 
@@ -239,7 +244,7 @@ given in advance, character for character.
 5. Under **Authorized redirect URIs**, add exactly:
 
    ```
-   http://localhost:3000/api/oauth/google/callback
+   http://localhost:1000/api/oauth/google/callback
    ```
 
    Leave **Authorized JavaScript origins** empty. That field is for flows where the browser itself calls
@@ -262,8 +267,8 @@ verification review and no weekly re-consent. Asking for anything more would cha
    | Field | Value |
    |---|---|
    | Application name | anything -- it is what the consent screen shows |
-   | Homepage URL | `http://localhost:3000` |
-   | Authorization callback URL | `http://localhost:3000/api/oauth/github/callback` |
+   | Homepage URL | `http://localhost:1000` |
+   | Authorization callback URL | `http://localhost:1000/api/oauth/github/callback` |
 
 3. **Register application**. The client id is on the page that follows.
 4. Next to **Client secrets**, click **Generate a new client secret**, and copy it before leaving the page.
@@ -277,7 +282,7 @@ as soon as it is registered.
 1. [entra.microsoft.com](https://entra.microsoft.com) -> **App registrations** -> **New registration**.
    Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**,
    which is what the `common` endpoint this service uses serves. Redirect URI, platform **Web**:
-   `http://localhost:3000/api/oauth/microsoft/callback` (Microsoft allows `http` for `localhost` only).
+   `http://localhost:1000/api/oauth/microsoft/callback` (Microsoft allows `http` for `localhost` only).
 2. **Certificates & secrets** -> **New client secret**. Copy the **Value**, not the Secret ID.
 3. **Token configuration** -> **Add optional claim** -> token type **ID** -> tick **email**, and accept
    turning on the Graph `email` permission. Then **Manifest** -> in `optionalClaims.idToken` add
@@ -313,7 +318,7 @@ email" users arrive as `@privaterelay.appleid.com` addresses, which are verified
    your app -> **Settings** -> **User authentication settings** -> **Set up**.
 2. **App permissions**: Read. Tick **Request email from users** -- without it the API never returns the
    address and every sign-in is refused. **Type of App**: Web App. **Callback URI**:
-   `http://localhost:3000/api/oauth/x/callback`; **Website URL**: anything.
+   `http://localhost:1000/api/oauth/x/callback`; **Website URL**: anything.
 3. **Keys and tokens** -> **OAuth 2.0 Client ID and Client Secret** -> **Generate**. Both are shown once.
 
 X requires PKCE, which every provider here gets anyway, and reads the client secret only as HTTP Basic on
@@ -327,13 +332,13 @@ number and no email answers `{}` and is refused.
    attached to a LinkedIn Page you administer.
 2. **Products** -> **Sign In with LinkedIn using OpenID Connect** -> **Request access** (instant). This is
    what grants the `openid profile email` scopes; the old `r_emailaddress` product is gone.
-3. **Auth** -> **Authorized redirect URLs for your app** -> `http://localhost:3000/api/oauth/linkedin/callback`.
+3. **Auth** -> **Authorized redirect URLs for your app** -> `http://localhost:1000/api/oauth/linkedin/callback`.
    The client id and **Primary Client Secret** are on the same tab.
 
 #### Discord
 
 1. [discord.com/developers/applications](https://discord.com/developers/applications) -> **New Application**.
-2. **OAuth2** -> **Redirects** -> `http://localhost:3000/api/oauth/discord/callback`. The **Client ID** is
+2. **OAuth2** -> **Redirects** -> `http://localhost:1000/api/oauth/discord/callback`. The **Client ID** is
    on the same page; **Reset Secret** shows the secret once.
 
 Discord says in `verified` whether it has confirmed the address; an unconfirmed Discord account is refused.
@@ -357,7 +362,7 @@ OAUTH_APPLE_KEY_ID=FGHIJ67890
 OAUTH_APPLE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\nMIGT...\n-----END PRIVATE KEY-----
 ```
 
-Then `./login-demo start auth-service` -- compose re-reads `.env`, and `GET /api/oauth/providers` is the
+Then `./dbase start auth-service` -- compose re-reads `.env`, and `GET /api/oauth/providers` is the
 quickest way to see whether a provider took. An empty list means a credential is missing or blank, since
 enabled-but-unconfigured counts as off.
 
@@ -371,14 +376,18 @@ restart rather than an outage.
 
 ## Tokens
 
-An RSA keypair is generated at startup and never written to disk. Tokens are RS256 JWTs carrying `sub`
+The RSA signing key is `auth.signing-key` (`AUTH_SIGNING_KEY`, a base64 PKCS#8 private key that `./dbase setup`
+writes to `.env`), so tokens outlive a restart; that matters for agent tokens, which live 30 days in an external
+agent's config. Blank makes a key at startup, which a restart voids; a key under 2048 bits refuses to boot. Tokens
+are RS256 JWTs carrying `iss` (`auth-service`) and `aud` (`demo-base`), which `libs/auth-client` checks exactly, `sub`
 (the user id), `email`, `name`, `role`, `ver` (the user's token version), `iat` and `exp`. An agent
 token adds `agent` (the one agent it is pinned to) and `agentVer` (that agent's own token version, see
-below). The public half is published at `/api/jwks.json` with a `kid`, so a second key can be added later
+below). The public half is published at `/api/jwks.json` with the key's thumbprint as `kid`, so a second key can be added later
 without breaking anything.
 
 Two token versions, both kept here because this is where tokens are minted and where the feed the other
-services poll is served. The user's `tokenVersion` is bumped by an admin's revoke or suspend and kills
+services poll is served. The user's `tokenVersion` is bumped by an admin's revoke, suspend or role change,
+the user's own new password, a provider claiming an unproven row, or an admin's create over one, and kills
 every token the user holds. An agent's `AgentTokenVersion` row is bumped by its owner, through
 agent-service and `POST /internal/agent-tokens/{agentId}/revoke`, and kills that one agent's tokens alone.
 `/internal/token-versions` publishes both in one map, users by id and agents as `agent:<id>`, so the two
@@ -388,9 +397,9 @@ claim existed cannot be told from one revoked since, so it is refused.
 The id is the subject because it is the one thing about a user that never changes; a rename or a new
 email does not orphan anything that points at it.
 
-A restart mints a new keypair and so invalidates every token in flight. Users are untouched. There is no
-logout endpoint to pair with any of this: a signed token is good until it expires, so logging out is the
-client dropping the token it holds, and `auth.token-ttl` is the real bound.
+With `AUTH_SIGNING_KEY` blank, a restart mints a new keypair and so invalidates every token in flight. Users
+are untouched. There is no logout endpoint to pair with any of this: a signed token is good until it expires,
+so logging out is the client dropping the token it holds, and `auth.token-ttl` is the real bound.
 
 ## Endpoints
 
@@ -405,7 +414,8 @@ client dropping the token it holds, and `auth.token-ttl` is the real bound.
 | PUT | `/api/users/{id}/role` | `{role}` -- admin only, else 403; a change also revokes the user's tokens |
 | PUT | `/api/users/{id}/suspended` | `{suspended}` -- admin only; suspending also revokes; not on yourself |
 | POST | `/api/users/{id}/revoke` | no body -- admin only; kills every token the user holds |
-| GET | `/internal/token-versions` | `{"<userId>": version, "agent:<agentId>": version}` for every revoked user and agent; agent-service polls it |
+| POST | `/api/users/create` | `{name, email, password, role?}` -> 201, the user -- admin only; no link is mailed, the user signs in at once; 400 names a taken address |
+| GET | `/internal/token-versions` | `{"<userId>": version, "agent:<agentId>": version}` for every revoked user and agent; todo- and agent-service poll it |
 | POST | `/internal/agent-tokens` | `{userId, agentId}` -> `{token}`: a 30-day `AGENT` token for one agent, stamped with its `agentVer`; agent-service asks, with `X-Internal-Secret`, else 403 |
 | POST | `/internal/agent-tokens/{agentId}/revoke` | -> `{version}`: bumps that agent's version, killing every token minted for it; same secret, else 403 |
 | POST | `/api/users/email-confirm` | `{token}` from a change-of-email link -> `{email, changed}`: the address now held, or (an approval) the new address its own link went to; 400 if altered, expired or used -- no token |
@@ -417,7 +427,8 @@ client dropping the token it holds, and `auth.token-ttl` is the real bound.
 | GET | `/api/public/stats` | `{users}` -- no token |
 | GET | `/api/jwks.json` | the public signing key -- no token |
 
-Everything except the bottom eight needs `Authorization: Bearer <token>`. Every rejection comes back as
+Only the eight rows from `GET /api/users/me` to `POST /api/users/create` need `Authorization: Bearer <token>`;
+the other thirteen take none, the three `/internal` ones being compose-network only. Every rejection comes back as
 `{"error": "..."}`, Spring's own included -- a body that will not parse, an unknown role, a non-numeric id, an
 unknown path -- which `AuthExceptionAdvice` is responsible for.
 
@@ -425,16 +436,17 @@ unknown path -- which `AuthExceptionAdvice` is responsible for.
 
 | Property | Environment | Default |
 |---|---|---|
-| `server.port` | `SERVER_PORT` | `9081` |
+| `server.port` | `SERVER_PORT` | `1001` |
 | `auth.token-ttl` | `AUTH_TOKEN_TTL` | `30m` |
 | `auth.agent-token-ttl` | `AUTH_AGENT_TOKEN_TTL` | `30d` -- the tokens `/internal/agent-tokens` mints |
+| `auth.signing-key` | `AUTH_SIGNING_KEY` | blank -- signs every token; blank makes a key at startup, which voids every token, agent ones included, on a restart; `./dbase setup` writes one to `.env` |
 | `auth.internal-secret` | `AUTH_INTERNAL_SECRET` | `dev-internal-secret` -- what `/internal/agent-tokens` demands as `X-Internal-Secret`; blank closes it; set it in `.env` |
 | `auth.mail-from` | `AUTH_MAIL_FROM` | `no-reply@localhost` -- the sender of the signup and change-of-email links |
 | `auth.email-link-key` | `AUTH_EMAIL_LINK_KEY` | blank -- signs those links; blank makes a key at startup, which voids every link on a restart and keeps two instances from reading each other's; set it in `.env` |
 | `spring.mail.host` / `.port` / `.username` / `.password` | `SPRING_MAIL_*` | unset -- no mail sender, so no signup and no change of email; compose sets Mailpit |
 | `admin.email` | `ADMIN_EMAIL` | empty -- no admin is seeded |
 | `admin.password` | `ADMIN_PASSWORD` | empty -- no admin is seeded |
-| `oauth.redirect-base-url` | `OAUTH_REDIRECT_BASE_URL` | `http://localhost:3000` -- the frontend's address |
+| `oauth.redirect-base-url` | `OAUTH_REDIRECT_BASE_URL` | `http://localhost:1000` -- the frontend's address |
 | `oauth.google.enabled` | `OAUTH_GOOGLE_ENABLED` | `false` |
 | `oauth.google.client-id` / `.client-secret` | `OAUTH_GOOGLE_CLIENT_*` | empty -- and empty means off |
 | `oauth.github.enabled` | `OAUTH_GITHUB_ENABLED` | `false` |
@@ -442,7 +454,7 @@ unknown path -- which `AuthExceptionAdvice` is responsible for.
 | `oauth.microsoft.*`, `oauth.x.*`, `oauth.linkedin.*`, `oauth.discord.*` | `OAUTH_<PROVIDER>_ENABLED`, `_CLIENT_ID`, `_CLIENT_SECRET` | `false`, empty, empty |
 | `oauth.apple.enabled` | `OAUTH_APPLE_ENABLED` | `false` |
 | `oauth.apple.client-id` / `.team-id` / `.key-id` / `.private-key` | `OAUTH_APPLE_CLIENT_ID`, `_TEAM_ID`, `_KEY_ID`, `_PRIVATE_KEY` | empty -- all four needed, and the key must parse |
-| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/auth` |
+| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:1006/auth` |
 | `spring.datasource.username` / `.password` | `SPRING_DATASOURCE_*` | `auth` / `auth` |
 
 ## Schema

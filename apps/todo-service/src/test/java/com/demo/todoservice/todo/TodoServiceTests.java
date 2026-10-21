@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:sqlite:target/test.db",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.liquibase.enabled=false",
         // SQLite allows a single writer; one connection keeps Hibernate from tripping over itself.
         "spring.datasource.hikari.maximum-pool-size=1",
 })

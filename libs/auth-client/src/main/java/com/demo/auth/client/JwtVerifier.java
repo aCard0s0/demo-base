@@ -28,6 +28,10 @@ import java.util.Set;
 @Component
 public class JwtVerifier {
 
+    static final String ISSUER = "auth-service";
+
+    static final String AUDIENCE = "demo-base";
+
     private final JWTProcessor<SecurityContext> jwt;
 
     private final Revocations revocations;
@@ -37,8 +41,10 @@ public class JwtVerifier {
         JWKSource<SecurityContext> keys = JWKSourceBuilder.create(URI.create(jwksUri).toURL()).build();
         DefaultJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
         processor.setJWSKeySelector(new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, keys));
-        // Rejects a token with no expiry outright, rather than treating it as one that never expires.
-        processor.setJWTClaimsSetVerifier(new DefaultJWTClaimsVerifier<>(null, Set.of("sub", "exp")));
+        // Rejects a token with no expiry outright, rather than treating it as one that never expires, and one
+        // auth-service did not mint for this stack (Tokens sets both).
+        processor.setJWTClaimsSetVerifier(new DefaultJWTClaimsVerifier<>(AUDIENCE,
+                new JWTClaimsSet.Builder().issuer(ISSUER).build(), Set.of("sub", "exp")));
         this.jwt = processor;
     }
 

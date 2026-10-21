@@ -11,7 +11,7 @@ import java.util.function.Supplier;
 /**
  * Which URLs a service may be pointed at by something a user typed. A service that POSTs to such a URL does so
  * from inside the deployment's network, where the database and {@code /internal} endpoints live, so a user
- * typing {@code http://auth-service:9081/internal/...} would be a request forged with the service's own standing.
+ * typing {@code http://auth-service:1001/internal/...} would be a request forged with the service's own standing.
  *
  * <p>Two kinds of URL pass. The deployment's own servers, supplied by {@code trusted}, are accepted exactly as
  * written: they are private addresses by design. Anything else must be http(s), name a host with a dot in it

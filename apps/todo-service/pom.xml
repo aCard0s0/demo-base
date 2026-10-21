@@ -18,13 +18,17 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-liquibase</artifactId>
+        </dependency>
         <!-- ErrorBodyAdvice: the {error} body every service answers a rejection with. -->
         <dependency>
             <groupId>com.demo</groupId>
             <artifactId>web-errors</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- JwtVerifier, Revocations and Caller: the one copy the three token-verifying services share. -->
+        <!-- JwtVerifier, Revocations and Caller: the one copy every token-verifying service shares. -->
         <dependency>
             <groupId>com.demo</groupId>
             <artifactId>auth-client</artifactId>
@@ -44,6 +48,22 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- PostgresIntegrationTests: the changeset run on a real Postgres, the entity validated against it. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

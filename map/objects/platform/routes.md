@@ -16,7 +16,7 @@ web image, `apps/web/proxy.conf.json` under the dev server. Same table, two file
 ## Why this shape
 
 Everything sits behind one origin, so no service sets CORS and the bearer token travels in a header, not a URL
-(`README.md:381-387`). `/internal` is for service-to-service calls on the compose network only, so nginx refuses it
+(`README.md:407-413`). `/internal` is for service-to-service calls on the compose network only, so nginx refuses it
 outright (`docker/nginx.conf:26-27`). The provider callback `<base>/api/oauth/<p>/callback` lands on auth-service
 through the plain `/api` rule, which is why the OAuth redirect base is the web's address.
 
@@ -24,9 +24,9 @@ through the plain `/api` rule, which is why the OAuth redirect base is the web's
 
 | Prefix | Service | nginx | dev proxy |
 |---|---|---|---|
-| `/api/agents`, `/api/public/agents`, `/mcp` | agent-service :9083 | `docker/nginx.conf:20-22` | `apps/web/proxy.conf.json:2-7`, `:17-19` |
-| `/api/todos`, `/api/public/todos` | todo-service :9082 | `:23-24` | `:8-13` |
-| `/api` (the rest) | auth-service :9081 | `:25` | `:14-16` |
+| `/api/agents`, `/api/public/agents`, `/mcp` | agent-service :1003 | `docker/nginx.conf:20-22` | `apps/web/proxy.conf.json:2-7`, `:17-19` |
+| `/api/todos`, `/api/public/todos` | todo-service :1002 | `:23-24` | `:8-13` |
+| `/api` (the rest) | auth-service :1001 | `:25` | `:14-16` |
 | `/internal` | none: 404 | `:27` | not listed, never proxied |
 | `/` | the Angular bundle, SPA fallback | `:29-31` | dev server |
 
@@ -52,13 +52,13 @@ through the plain `/api` rule, which is why the OAuth redirect base is the web's
   gets no bearer from `authInterceptor` (`apps/web/src/app/auth/auth.ts:157`). A new external script, font or
   image host → the CSP line, or the browser blocks it in compose only.
 - **Does not hit:** the services' security config or CORS (there is none to change), and compose's internal URLs
-  (`compose.yaml:89-90`), which call `auth-service:9081` directly, bypassing both files.
+  (`compose.yaml:105-106`), which call `auth-service:1001` directly, bypassing both files.
 
 ## Surfaces
 
 | Surface | Role |
 |---|---|
-| browser, MCP clients | send everything to `:3000` |
+| browser, MCP clients | send everything to `:1000` |
 | [web-app](web-app.md) | calls `/api/...` relative to its origin |
 
 ## See

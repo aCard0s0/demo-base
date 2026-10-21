@@ -2,7 +2,7 @@
 
 The edit map of this repo: what the nouns are, how they move, and what else moves when you change one. The code
 is the source of truth; every card cites it. AGENTS.md and routing.md here are generated twins of this file
-(`./demo-base map sync`) — edit this one only.
+(`./dbase map sync`) — edit this one only.
 
 ## Where things live
 
@@ -24,7 +24,7 @@ is the source of truth; every card cites it. AGENTS.md and routing.md here are g
 | asking "what is X" | `objects/_index.md` | one card |
 | tracing a request end to end | `processes/` | the steps' citations |
 | adding a service to this base | `processes/add-a-service.md` | every file it lists |
-| running, building, testing | `../demo-base` (bare prints every command) | — |
+| running, building, testing | `../dbase` (bare prints every command) | — |
 
 ## Names that collide
 

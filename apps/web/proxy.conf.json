@@ -1,20 +1,20 @@
 {
   "/api/agents": {
-    "target": "http://localhost:9083"
+    "target": "http://localhost:1003"
   },
   "/api/public/agents": {
-    "target": "http://localhost:9083"
+    "target": "http://localhost:1003"
   },
   "/api/todos": {
-    "target": "http://localhost:9082"
+    "target": "http://localhost:1002"
   },
   "/api/public/todos": {
-    "target": "http://localhost:9082"
+    "target": "http://localhost:1002"
   },
   "/api": {
-    "target": "http://localhost:9081"
+    "target": "http://localhost:1001"
   },
   "/mcp": {
-    "target": "http://localhost:9083"
+    "target": "http://localhost:1003"
   }
 }

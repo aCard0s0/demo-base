@@ -28,6 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:sqlite:target/contract-test.db",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.liquibase.enabled=false",
         "spring.datasource.hikari.maximum-pool-size=1",
 })
 @AutoConfigureMockMvc

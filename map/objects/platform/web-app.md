@@ -10,7 +10,7 @@ entity: apps/web/src/app/app.routes.ts
 
 # Web app
 
-The Angular frontend in `apps/web`: sign-in, profile, user admin and agent pages, talking to the services only
+The Angular frontend in `apps/web`: sign-in, profile, user admin, todo and agent pages, talking to the services only
 through same-origin `/api/...` calls.
 
 ## Why this shape
@@ -23,27 +23,27 @@ not carry a token (login, mailed links, the OAuth hand-off) are marked `PUBLIC` 
 ## Shape
 
 - Routes (`apps/web/src/app/app.routes.ts:4-19`): `login`, `signup` (same component, `data.signup`), `confirm-email`
-  (no guard: the link is the proof), and behind `authGuard`: `profile`, `users`, `agents`, `agents/:id`; `**` → `agents`.
+  (no guard: the link is the proof), and behind `authGuard`: `profile`, `users`, `todos`, `agents`, `agents/:id`; `**` → `agents`.
 - `Auth` service (`auth.ts:39-141`): token signal persisted to localStorage key `auth-token` (`:29`, `:43-55`);
   `login`, `register`, `verifyEmail`, `finishOAuth` (spends the HttpOnly `oauth_session` cookie, `:81-84`),
   `refresh` → `GET /api/users/me`, `update`, email change.
 - `authInterceptor` (`auth.ts:154-164`): bearer only on `/api/` URLs not marked public; 401 → `logout()`.
   `authGuard` (`:166`) redirects to `/login` with no token; `leaveWhenSignedOut` (`:172-178`) for pages already open.
 - Wiring: `apps/web/src/app/app.config.ts:10-17` (router, fetch HttpClient + interceptor, non-blocking `/me` at boot).
-- API clients: `agents/agents.ts:86-134` (`/api/agents...`), `users/users.ts:14-29` (`/api/users...`). No page calls
-  todo-service. The sidebar shows Users only to ADMIN/MODERATOR (`commons/sidebar/sidebar.ts:22-23`).
+- API clients: `agents/agents.ts:87-136` (`/api/agents...`), `users/users.ts:16-43` (`/api/users...`),
+  `todos/todos.ts` (`/api/todos...`). The sidebar shows Users only to ADMIN/MODERATOR (`commons/sidebar/sidebar.ts:22-23`).
 - Styles: `src/styles.scss:4-10` pulls the partials in `src/styles/` — a selective Bootstrap import
   (`_bootstrap-custom.scss:1-2`), theme tokens as CSS variables keyed on `data-theme` (`_theme.scss:3-4`,
   `index.html:2`). `includePaths: ["src"]` (`apps/web/angular.json:31-34`) is what lets a component stylesheet
   write `@use 'styles/variables'`.
 - Build: `npm run build` → `dist/web/browser`, served by nginx (`Dockerfile:35-45`); also a Maven module
-  (`apps/web/pom.xml:19-56`) that the Docker build and `./demo-base test java` skip.
+  (`apps/web/pom.xml:19-56`) that the Docker build and `./dbase test java` skip.
 
 ## Connected to
 
 - **owns:** the browser's copy of the [token](../identity/token.md)
 - **owned-by:** [routes](routes.md) (one origin), [stack](stack.md) (`web` service)
-- **joins:** [user](../identity/user.md), [role](../identity/role.md), [email-link](../identity/email-link.md),
+- **joins:** [todo](../todos/todo.md), [user](../identity/user.md), [role](../identity/role.md), [email-link](../identity/email-link.md),
   [agent](../agents/agent.md), [agent-mcp-server](../agents/agent-mcp-server.md), [activity](../agents/activity.md)
 - **looks-like-but-is-not:** an MCP client — the agent token page only shows the `/mcp?agent=<id>` URL
   (`agents/agent-token/agent-token.ts:31`); external clients connect
@@ -61,7 +61,7 @@ not carry a token (login, mailed links, the OAuth hand-off) are marked `PUBLIC` 
 | Surface | Role |
 |---|---|
 | browser | the only consumer |
-| `./demo-base dev web` / `test web` | `npm start` on :3000 / Vitest (`demo-base:247-250`, `:237-238`) |
+| `./dbase dev web` / `test web` | `npm start` on :1000 / Vitest (`dbase:266-270`, `:256-257`) |
 
 ## See
 

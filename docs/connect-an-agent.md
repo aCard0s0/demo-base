@@ -6,8 +6,8 @@ it is offered and checks every call against the agent's READ/WRITE settings as t
 
 ## 1. Get the URL and a token
 
-1. Log in at http://localhost:3000, open **Agents**, create or open an agent.
-2. The **Connect** section shows the URL: `http://localhost:3000/mcp?agent=<id>`.
+1. Log in at http://localhost:1000, open **Agents**, create or open an agent.
+2. The **Connect** section shows the URL: `http://localhost:1000/mcp?agent=<id>`.
 3. Click **Create token**. The token is shown once, with a **Copy** button and a client picker that renders
    the matching config -- the `claude mcp add` line, a `.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`,
    an `mcp-remote` entry for Claude Desktop, or a `curl`. Copy it now; it is never shown or stored again. It
@@ -18,11 +18,11 @@ Alternatively, your own login token (the one the browser holds, 30 minutes) work
 Over the API, for scripts:
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:3000/api/login -H 'content-type: application/json' \
+TOKEN=$(curl -s -X POST http://localhost:1000/api/login -H 'content-type: application/json' \
   -d '{"email":"you@example.com","password":"..."}' | sed -E 's/.*"token":"([^"]+)".*/\1/')
-AGENT=$(curl -s -X POST http://localhost:3000/api/agents -H "Authorization: Bearer $TOKEN" \
+AGENT=$(curl -s -X POST http://localhost:1000/api/agents -H "Authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"name":"my agent"}' | sed -E 's/^\{"id":([0-9]+).*/\1/')
-AGENT_TOKEN=$(curl -s -X POST "http://localhost:3000/api/agents/$AGENT/token" -H "Authorization: Bearer $TOKEN" \
+AGENT_TOKEN=$(curl -s -X POST "http://localhost:1000/api/agents/$AGENT/token" -H "Authorization: Bearer $TOKEN" \
   | sed -E 's/.*"token":"([^"]+)".*/\1/')
 ```
 
@@ -30,14 +30,14 @@ AGENT_TOKEN=$(curl -s -X POST "http://localhost:3000/api/agents/$AGENT/token" -H
 
 Transport is **Streamable HTTP**, auth is a plain `Authorization: Bearer <token>` header.
 
-An agent token names its agent in a claim, so with one the URL can be just `http://localhost:3000/mcp` and
+An agent token names its agent in a claim, so with one the URL can be just `http://localhost:1000/mcp` and
 `?agent=<id>` may be left off. A login token has no such claim and needs it. The examples below keep the
 parameter so they work with either token.
 
 **Claude Code**
 
 ```bash
-claude mcp add --transport http todos "http://localhost:3000/mcp?agent=<id>" --header "Authorization: Bearer <token>"
+claude mcp add --transport http todos "http://localhost:1000/mcp?agent=<id>" --header "Authorization: Bearer <token>"
 ```
 
 Then in a session: `/mcp` lists the server and its tools; ask it to "list my todos".
@@ -48,7 +48,7 @@ Then in a session: `/mcp` lists the server and its tools; ask it to "list my tod
 {
   "mcpServers": {
     "todos": {
-      "url": "http://localhost:3000/mcp?agent=<id>",
+      "url": "http://localhost:1000/mcp?agent=<id>",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
@@ -62,7 +62,7 @@ Then in a session: `/mcp` lists the server and its tools; ask it to "list my tod
   "servers": {
     "todos": {
       "type": "http",
-      "url": "http://localhost:3000/mcp?agent=<id>",
+      "url": "http://localhost:1000/mcp?agent=<id>",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
@@ -76,7 +76,7 @@ Then in a session: `/mcp` lists the server and its tools; ask it to "list my tod
   "mcpServers": {
     "todos": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:3000/mcp?agent=<id>", "--header", "Authorization: Bearer <token>"]
+      "args": ["-y", "mcp-remote", "http://localhost:1000/mcp?agent=<id>", "--header", "Authorization: Bearer <token>"]
     }
   }
 }
@@ -85,7 +85,7 @@ Then in a session: `/mcp` lists the server and its tools; ask it to "list my tod
 **Anything else, or by hand** -- it is JSON-RPC over POST:
 
 ```bash
-curl -s -X POST "http://localhost:3000/mcp?agent=<id>" \
+curl -s -X POST "http://localhost:1000/mcp?agent=<id>" \
   -H "Authorization: Bearer <token>" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
@@ -100,7 +100,8 @@ curl -s -X POST "http://localhost:3000/mcp?agent=<id>" \
 - **READ** on a server offers only the tools that only read: for the stack's own servers, the ones the server
   annotates `readOnlyHint: true`; for a server you added by URL, the ones you listed under *Read-only tools*
   on its row (none listed, nothing offered), since a server you typed in can annotate anything. **WRITE**
-  offers all. A new agent starts with no servers: add todo-service's (`http://todo-service:9082/mcp` in compose) as READ
+  offers all. A new agent starts with no servers: add todo-service's (`http://todo-service:1002/mcp` in compose) as READ
+  -- being the stack's own, it is forwarded the token your client connects with, unless you give it a header --
   and it can list todos and nothing else.
 - Every call is re-checked against what is saved right now. Flip `todos` to WRITE on the page and the next
   `todos__add_todo` goes through; flip it back and the next one is refused. The refusal is an `isError` tool
@@ -120,14 +121,14 @@ curl -s -X POST "http://localhost:3000/mcp?agent=<id>" \
   along with your login tokens.
 - Stored where your client keeps its config, in plain text. Treat it like a password: it acts as you, within
   what the agent is allowed.
-- `localhost:3000` is reachable from the machine running the stack only. An agent elsewhere needs the web
+- `localhost:1000` is reachable from the machine running the stack only. An agent elsewhere needs the web
   container reachable at an address it can resolve, and that address in the URL.
 
 ## Troubleshooting
 
 | symptom | cause |
 |---|---|
-| `invalid or expired token` | wrong, expired or revoked token; make a new one on the agent's page |
+| `invalid or expired token` | wrong, expired or revoked token, or one minted while `AUTH_SIGNING_KEY` was blank and auth-service has restarted since; make a new one on the agent's page. Every token gets it once auth-service's revocation feed has been unreadable for 5 minutes, until it is back. From a todo-service tool: its server row forwards no token; tick *Forward the connecting client's token* on it |
 | `no such agent` | the `agent=` id is not yours, or the agent token is for a different agent |
 | `which agent? connect to /mcp?agent=<id>, or use an agent token` | a login token with no `agent=` parameter; an agent token needs none |
 | a tool is missing from the list | the server is READ and the tool is not read-only -- by its annotation on a trusted server, by your *Read-only tools* list on any other -- or `othersAccess` is NONE |

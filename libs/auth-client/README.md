@@ -1,8 +1,8 @@
 # auth-client
 
 auth-service's client half: the one copy of how a service checks a caller's token without asking
-auth-service. A plain jar, not a service: no port, no database, no main class. agent-service
-depends on it; auth-service does not, because it is the side that mints.
+auth-service. A plain jar, not a service: no port, no database, no main class. todo-service, agent-service
+and `libs/mcp-server` depend on it; auth-service only in its tests, because it is the side that mints.
 
 ```
 com.demo.auth.client   JwtVerifier   the Authorization header -> a Caller, or 401
@@ -12,15 +12,18 @@ com.demo.auth.client   JwtVerifier   the Authorization header -> a Caller, or 40
 ```
 
 `JwtVerifier` fetches auth-service's JWKS once, caches it, and verifies RS256 only -- a token asking for
-`none` or a symmetric algorithm is refused before its signature is looked at. `sub` and `exp` are required.
+`none` or a symmetric algorithm is refused before its signature is looked at. `sub` and `exp` are required, and
+`iss` must be `auth-service` and `aud` `demo-base` exactly, so a token another stack minted is refused.
 A token whose `ver` is older than the user's last revocation is refused. An `AGENT` token must name its
 agent in the `agent` claim, or it is refused rather than read as "every agent of the owner", and must carry
 `agentVer` at or above that agent's own last revocation -- a token with no `agentVer` at all is refused,
 because one minted before the claim existed cannot be told from one revoked since.
 
 `Revocations` reads one map: users by id, agents as `agent:<id>`, so the two cannot collide. It **fails
-open**: if auth-service cannot be reached the last list stands, so a revocation made while it is down bites
-here once it is back. Failing closed would take every service down with it.
+closed, late**: if auth-service cannot be reached the last list stands for 5 minutes (`STALE_AFTER`), then every
+token is 401 until a read succeeds; before the first good read there is no list, so nothing passes. A revocation
+made while auth-service is down is therefore unseen for at most those 5 minutes. A request that arrives while
+another's read is in flight waits for that read rather than being refused.
 
 `Caller` answers the questions the services ask -- `isAgent`, `readsEveryone`, `writesEveryone`,
 `mayActAs`, `describe` -- and every one of them says "no" for a role it does not know.
@@ -37,8 +40,8 @@ The beans are `@Component`s under `com.demo.auth.client`, outside each service's
 
 | Property | Environment | Default |
 |---|---|---|
-| `auth.jwks-uri` | `AUTH_JWKS_URI` | `http://localhost:9081/api/jwks.json` |
-| `auth.token-versions-uri` | `AUTH_TOKEN_VERSIONS_URI` | `http://localhost:9081/internal/token-versions` |
+| `auth.jwks-uri` | `AUTH_JWKS_URI` | `http://localhost:1001/api/jwks.json` |
+| `auth.token-versions-uri` | `AUTH_TOKEN_VERSIONS_URI` | `http://localhost:1001/internal/token-versions` |
 
 ## Tests
 

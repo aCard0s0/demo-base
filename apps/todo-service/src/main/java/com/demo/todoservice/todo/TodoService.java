@@ -73,7 +73,7 @@ public class TodoService {
      */
     private Todo writable(Caller caller, Long id) {
         return (caller.writesEveryone() ? todos.findById(id) : todos.findByIdAndOwner(id, caller.userId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "no such todo"));
     }
 
     private static String cleanTitle(String title) {

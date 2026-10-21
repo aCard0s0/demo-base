@@ -5,8 +5,7 @@ a card disagree, fix the card. Inward edges (CI, other repos, scheduled jobs poi
 
 | If you are changing | Open first | Then |
 |---|---|---|
-| a column on users, agents, servers, activity | [user](../objects/identity/user.md) · [agent](../objects/agents/agent.md) · [agent-mcp-server](../objects/agents/agent-mcp-server.md) · [activity](../objects/agents/activity.md) | [databases](../objects/platform/databases.md): a new Liquibase changeset, or boot refuses |
-| a column on todos | [todo](../objects/todos/todo.md) | nothing else: `ddl-auto=update` adds it |
+| a column on users, agents, servers, activity, todos | [user](../objects/identity/user.md) · [agent](../objects/agents/agent.md) · [agent-mcp-server](../objects/agents/agent-mcp-server.md) · [activity](../objects/agents/activity.md) · [todo](../objects/todos/todo.md) | [databases](../objects/platform/databases.md): a new Liquibase changeset, or boot refuses |
 | an enum value (`Role`, `Access`, `OthersAccess`) | [role](../objects/identity/role.md) · [agent-mcp-server](../objects/agents/agent-mcp-server.md) · [agent](../objects/agents/agent.md) | a changeset widening the check constraint; the web's union types |
 | a token claim, TTL, or the signing key | [token](../objects/identity/token.md) · [caller](../objects/identity/caller.md) | [verify-and-revoke](../processes/verify-and-revoke.md) |
 | who can revoke, or when tokens die | [user](../objects/identity/user.md) · [agent-token-version](../objects/identity/agent-token-version.md) | [verify-and-revoke](../processes/verify-and-revoke.md) · [agent-token-mint](../processes/agent-token-mint.md) |
@@ -20,5 +19,5 @@ a card disagree, fix the card. Inward edges (CI, other repos, scheduled jobs poi
 | compose, Dockerfile, ports, memory | [stack](../objects/platform/stack.md) | README's resources table |
 | a database, role, or migration | [databases](../objects/platform/databases.md) | `docker/initdb.sql` |
 | adding a whole service | [add-a-service](../processes/add-a-service.md) | every file it lists |
-| a `./demo-base` command | [project-cli](../objects/platform/project-cli.md) | the registry row is the only place the name lives |
-| the map's entry file | `../CLAUDE.md` | `./demo-base map sync` regenerates `AGENTS.md` and `routing.md` |
+| a `./dbase` command | [project-cli](../objects/platform/project-cli.md) | the registry row is the only place the name lives |
+| the map's entry file | `../CLAUDE.md` | `./dbase map sync` regenerates `AGENTS.md` and `routing.md` |

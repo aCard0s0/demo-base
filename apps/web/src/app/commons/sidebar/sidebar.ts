@@ -19,6 +19,7 @@ export class Sidebar {
   readonly menuItems = computed(() => {
     const role = this.auth.user()?.role;
     return [
+      { label: 'Todos', icon: 'bi-check2-square', route: '/todos' },
       { label: 'Agents', icon: 'bi-robot', route: '/agents' },
       ...(role === 'ADMIN' || role === 'MODERATOR' ? [{ label: 'Users', icon: 'bi-people', route: '/users' }] : []),
     ];

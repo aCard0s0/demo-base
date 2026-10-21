@@ -19,7 +19,7 @@ public class OAuthProperties {
      * The public address the browser uses, and so the origin the provider must be told to redirect to. The
      * frontend's address rather than the service's own when the browser only ever reaches it through a proxy.
      */
-    private String redirectBaseUrl = "http://localhost:3000";
+    private String redirectBaseUrl = "http://localhost:1000";
 
     /** The callback route, under the base. {@code {provider}} is replaced by the provider's key. */
     private String callbackPath = "/api/oauth/{provider}/callback";

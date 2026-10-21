@@ -98,6 +98,31 @@ public class UserService {
     }
 
     /**
+     * An admin's new user. No link is mailed: the admin's say-so proves the address, and the user signs in at
+     * once with the password the admin hands over. Not under the registration cap, and a taken address is
+     * named plainly, because an admin reads the whole list anyway. An address nobody proved is free, as it is for
+     * {@link #register}: the admin's user takes that row over, so whoever typed it in cannot keep its owner out.
+     */
+    // No @Transactional, like register: BCrypt runs outside it, and the unique index on email decides a race.
+    public User create(String name, String email, String password, Role role) {
+        String cleanName = cleanName(name);
+        String cleanEmail = cleanEmail(email);
+        String hash = Passwords.hash(password);
+        Role cleanRole = role == null ? Role.USER : role;
+        // One conditional statement, like reRegister: a link spent in between wins, and the squatter's row starts
+        // over clean -- password, role, a suspension of theirs and every token signed for it all go.
+        if (users.takeOver(cleanEmail, cleanName, hash, cleanRole) == 1) {
+            return users.findByEmail(cleanEmail).orElseThrow();
+        }
+        if (users.existsByEmail(cleanEmail)) {
+            throw Bad.request("that email is already registered");
+        }
+        User user = new User(cleanName, cleanEmail, hash);
+        user.setRole(cleanRole);
+        return users.save(user);
+    }
+
+    /**
      * Spends a signup link: the inbox and the password chosen at signup, together, so neither the address's owner
      * nor whoever typed it in can verify it alone. Answers the user, now able to sign in.
      */

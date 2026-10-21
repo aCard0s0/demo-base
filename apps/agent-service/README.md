@@ -1,7 +1,7 @@
 # agent-service
 
 User-owned agents, the MCP servers each may use, and the permission that is enforced on every tool call.
-Port **9083**.
+Port **1003**.
 
 An agent is a name, instructions, a list of MCP servers each marked **READ** or **WRITE**, and one setting
 for how far it may reach into its owner's *other* agents. No model runs here. Each agent **is an MCP
@@ -154,10 +154,10 @@ Plain text lines, newest first, a hundred at a time, deleted with the agent:
 `POST /mcp?agent=<id>`, MCP Streamable HTTP, **stateless**: no session id, no event stream, nothing kept
 between requests. Every request carries the token and the agent id and re-reads the agent, which is what
 makes a change on the page bite on the very next call. The web proxy forwards `/mcp` as-is, so from outside
-the URL is `http://localhost:3000/mcp?agent=<id>`.
+the URL is `http://localhost:1000/mcp?agent=<id>`.
 
 ```bash
-claude mcp add --transport http my-agent "http://localhost:3000/mcp?agent=<id>" --header "Authorization: Bearer <token>"
+claude mcp add --transport http my-agent "http://localhost:1000/mcp?agent=<id>" --header "Authorization: Bearer <token>"
 ```
 
 The handler (`AgentMcpEndpoint.Handler`) is written out rather than built from the SDK's static tool list,
@@ -178,7 +178,7 @@ one fixed endpoint.
 | GET | `/api/agents/{id}` | |
 | PATCH | `/api/agents/{id}` | `{name?, instructions?, othersAccess?}` -- only the fields sent change |
 | DELETE | `/api/agents/{id}` | and its activity |
-| POST | `/api/agents/{id}/servers` | `{name, url, access, forwardCallerToken?, authHeader?, readOnlyTools?}`; `forwardCallerToken` only on a trusted URL |
+| POST | `/api/agents/{id}/servers` | `{name, url, access, forwardCallerToken?, authHeader?, readOnlyTools?}`; `forwardCallerToken` only on a trusted URL, where left out it is true unless an `authHeader` is given |
 | PATCH | `/api/agents/{id}/servers/{sid}` | `{name?, url?, access?, forwardCallerToken?, authHeader?, readOnlyTools?}`; an empty `authHeader` clears it, an empty `readOnlyTools` marks none |
 | DELETE | `/api/agents/{id}/servers/{sid}` | |
 | GET | `/api/agents/{id}/activity` | newest first, at most 100 |
@@ -207,14 +207,14 @@ unreadable, so it belongs with the database.
 
 | Property | Environment | Default |
 |---|---|---|
-| `server.port` | `SERVER_PORT` | `9083` |
-| `auth.jwks-uri` | `AUTH_JWKS_URI` | `http://localhost:9081/api/jwks.json` |
-| `auth.token-versions-uri` | `AUTH_TOKEN_VERSIONS_URI` | `http://localhost:9081/internal/token-versions` |
-| `auth.agent-tokens-uri` | `AUTH_AGENT_TOKENS_URI` | `http://localhost:9081/internal/agent-tokens`; `/{id}/revoke` under it is where a per-agent revoke goes |
+| `server.port` | `SERVER_PORT` | `1003` |
+| `auth.jwks-uri` | `AUTH_JWKS_URI` | `http://localhost:1001/api/jwks.json` |
+| `auth.token-versions-uri` | `AUTH_TOKEN_VERSIONS_URI` | `http://localhost:1001/internal/token-versions` |
+| `auth.agent-tokens-uri` | `AUTH_AGENT_TOKENS_URI` | `http://localhost:1001/internal/agent-tokens`; `/{id}/revoke` under it is where a per-agent revoke goes |
 | `auth.internal-secret` | `AUTH_INTERNAL_SECRET` | `dev-internal-secret` -- sent as `X-Internal-Secret` when asking for a token; set it in `.env` |
 | `agents.auth-header-key` | `AGENTS_AUTH_HEADER_KEY` | `dev-auth-header-key` -- encrypts stored authorization headers; blank refuses to start; set it in `.env` |
-| `spring.datasource.*` | `SPRING_DATASOURCE_*` | `jdbc:postgresql://localhost:5432/agent`, `agent` / `agent` |
-| `agents.trusted-server-urls` | `AGENTS_TRUSTED_SERVER_URLS` | `http://localhost:9082/mcp` (compose: `http://todo-service:9082/mcp`); comma separated, the deployment's own servers an owner may attach by their private name |
+| `spring.datasource.*` | `SPRING_DATASOURCE_*` | `jdbc:postgresql://localhost:1006/agent`, `agent` / `agent` |
+| `agents.trusted-server-urls` | `AGENTS_TRUSTED_SERVER_URLS` | `http://localhost:1002/mcp` (compose: `http://todo-service:1002/mcp`); comma separated, the deployment's own servers an owner may attach by their private name |
 
 ## Schema
 

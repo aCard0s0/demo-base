@@ -98,6 +98,12 @@ class JwtVerifierTests {
             assertEquals("7", verifier.callerOf("Bearer " + token(advertised, "7", later, "USER", 2)).userId());
             assertEquals("7", verifier.callerOf("Bearer " + token(advertised, "7", later, "USER", 3)).userId(),
                     "a token newer than the last revocation heard of is fine");
+            assertThrows(ResponseStatusException.class, () -> verifier.callerOf("Bearer " + sign(advertised,
+                            new JWTClaimsSet.Builder().issuer(JwtVerifier.ISSUER).audience("other").subject("42").expirationTime(Date.from(later)))),
+                    "a token minted for another audience must not be accepted");
+            assertThrows(ResponseStatusException.class, () -> verifier.callerOf("Bearer " + sign(advertised,
+                            new JWTClaimsSet.Builder().audience(JwtVerifier.AUDIENCE).subject("42").expirationTime(Date.from(later)))),
+                    "nor one with no issuer");
             assertThrows(ResponseStatusException.class, () -> verifier.callerOf(null));
             assertThrows(ResponseStatusException.class, () -> verifier.callerOf("Bearer not.a.token"));
         } finally {
@@ -139,7 +145,8 @@ class JwtVerifierTests {
     }
 
     static String token(RSAKey key, String subject, Instant expiry, String role, Integer version, Long agent, Integer agentVersion) throws Exception {
-        JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder().subject(subject).expirationTime(Date.from(expiry));
+        JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder().issuer(JwtVerifier.ISSUER).audience(JwtVerifier.AUDIENCE)
+                .subject(subject).expirationTime(Date.from(expiry));
         if (agent != null) {
             claims.claim("agent", agent);
         }
@@ -152,6 +159,10 @@ class JwtVerifierTests {
         if (version != null) {
             claims.claim("ver", version);
         }
+        return sign(key, claims);
+    }
+
+    static String sign(RSAKey key, JWTClaimsSet.Builder claims) throws Exception {
         SignedJWT jwt = new SignedJWT(
                 new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.getKeyID()).build(), claims.build());
         jwt.sign(new RSASSASigner(key));

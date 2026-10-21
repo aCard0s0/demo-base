@@ -111,7 +111,10 @@ public class AgentService {
         Agent agent = get(caller, id);
         String name = uniqueServerName(agent, in.name());
         String url = urls.clean(in.url());
-        boolean forward = Boolean.TRUE.equals(in.forwardCallerToken());
+        // Unsaid, the deployment's own server gets the caller's token: without it every call there is a 401, and the
+        // page only offers the switch once a saved row says it is trusted. A header, or an explicit false, says no.
+        boolean forward = in.forwardCallerToken() != null ? in.forwardCallerToken()
+                : blankToNull(in.authHeader()) == null && urls.trusted(url);
         checkForward(forward, url);
         AgentMcpServer server = new AgentMcpServer(agent, name, url, blankToNull(in.authHeader()), forward, in.access());
         server.setReadOnlyTools(cleanTools(in.readOnlyTools()));

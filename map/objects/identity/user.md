@@ -17,20 +17,21 @@ A registered person, the `users` row in auth-service's database (`User.java`); t
 Every revocation is a counter on this row: `tokenVersion` is stamped into each [token](token.md) as `ver`, and
 bumping it kills every token issued before, in every service (`User.java:50-57`). The flags exist because sign-in
 with a provider matches users by email alone: `passwordSet=false` marks a hash nobody holds
-(`User.java:59-62`, `UserService.java:254-256`), and `emailVerified=false` blocks sign-in until the signup
+(`User.java:59-62`, `UserService.java:279-281`), and `emailVerified=false` blocks sign-in until the signup
 [email link](email-link.md) comes back (`User.java:64-67`, `SessionService.java:62-69`).
 
 ## Shape
 
 - `id` identity PK, the token's `sub`; `email` unique; `name`; `passwordHash` (BCrypt) — `User.java:24-35`
 - `role` stored as its name, default `USER` — `User.java:41-43`; see [role](role.md)
-- `suspended`: no login, and every held token dies (suspend bumps the version) — `User.java:45-48`, `UserService.java:349-360`
-- `tokenVersion` bumped by admin revoke, suspend, role change, new password, provider claim — `UserService.java:363-368`, `:336-340`, `:174`, `UserRepository.java:45-47`
+- `suspended`: no login, and every held token dies (suspend bumps the version) — `User.java:45-48`, `UserService.java:374-385`
+- `tokenVersion` bumped by admin revoke, suspend, role change, new password, provider claim, admin create over an unproven row — `UserService.java:388-393`, `:361-365`, `:199`, `UserRepository.java:56-58`, `:45-47`
+- Made by: signup (`emailVerified=false`, a link mailed, see [signup-and-verify](../../processes/signup-and-verify.md)); provider sign-in (`UserService.java:267-283`); the AdminSeeder below; and an admin's `POST /api/users/create`: any role, password set, verified at once, no mail, not under the signup cap; an unproven address is taken over in one conditional UPDATE (name, password and role replaced, proven, unsuspended, `ver` bumped), a verified one is a plain 400 — `UserController.java:52-62`, `UserService.java:100-123`, `UserRepository.java:39-48`
 - Schema is Liquibase, Hibernate only validates — `001-init.sql:8-16`, `002-password-set.sql:7`, `003-email-verified.sql:7`, `application.properties:11`
-- Writes that race are single conditional UPDATEs (`edit`, `verifyEmail`, `reRegister`, `claim`, `moveEmail`) — `UserRepository.java:21-53`
-- **AdminSeeder**: on every boot, `admin.email`/`admin.password` create the admin, or promote an existing address without touching its password; blank logs a warning — `AdminSeeder.java:42-50`, `UserService.java:389-404`, `application.properties:37-38`
+- Writes that race are single conditional UPDATEs (`edit`, `verifyEmail`, `reRegister`, `takeOver`, `claim`, `moveEmail`) — `UserRepository.java:21-64`
+- **AdminSeeder**: on every boot, `admin.email`/`admin.password` create the admin, or promote an existing address without touching its password; blank logs a warning — `AdminSeeder.java:42-50`, `UserService.java:414-429`, `application.properties:40-41`
 
-Citations (short names below resolve here): `apps/auth-service/src/main/java/com/demo/authservice/user/entities/User.java`, `apps/auth-service/src/main/java/com/demo/authservice/user/entities/UserRepository.java`, `apps/auth-service/src/main/java/com/demo/authservice/user/UserService.java`, `apps/auth-service/src/main/java/com/demo/authservice/session/SessionService.java`, `apps/auth-service/src/main/java/com/demo/authservice/user/AdminSeeder.java`, `apps/auth-service/src/main/java/com/demo/authservice/user/CurrentUserResolver.java`, `apps/auth-service/src/main/resources/application.properties`, `apps/auth-service/src/main/resources/db/changelog/changes/{001-init,002-password-set,003-email-verified}.sql`, `libs/auth-client/src/main/java/com/demo/auth/client/JwtVerifier.java`
+Citations (short names below resolve here): `apps/auth-service/src/main/java/com/demo/authservice/user/entities/User.java`, `apps/auth-service/src/main/java/com/demo/authservice/user/entities/UserRepository.java`, `apps/auth-service/src/main/java/com/demo/authservice/user/{UserService,UserController}.java`, `apps/auth-service/src/main/java/com/demo/authservice/session/SessionService.java`, `apps/auth-service/src/main/java/com/demo/authservice/user/AdminSeeder.java`, `apps/auth-service/src/main/java/com/demo/authservice/user/CurrentUserResolver.java`, `apps/auth-service/src/main/resources/application.properties`, `apps/auth-service/src/main/resources/db/changelog/changes/{001-init,002-password-set,003-email-verified}.sql`, `libs/auth-client/src/main/java/com/demo/auth/client/JwtVerifier.java`
 
 ## Connected to
 
@@ -42,7 +43,7 @@ Citations (short names below resolve here): `apps/auth-service/src/main/java/com
 ## If you change this
 
 - **Hits:** a new or changed column needs a changeset under `apps/auth-service/src/main/resources/db/changelog/changes/` (`ddl-auto=validate` refuses a mismatch, `application.properties:11`); `UserResponse` and the web `User` type if it is shown (`apps/web/src/app/auth/auth.ts:11`); anything new that must kill sessions bumps `tokenVersion`.
-- **Does not hit:** todo-service or agent-service: they never read this row, only the token's claims (`JwtVerifier.java:52-72`). Changing the admin password in `.env` does not reset an existing admin (`UserService.java:393-399`).
+- **Does not hit:** todo-service or agent-service: they never read this row, only the token's claims (`JwtVerifier.java:58-78`). Changing the admin password in `.env` does not reset an existing admin (`UserService.java:418-424`).
 
 ## Surfaces
 
@@ -50,8 +51,9 @@ Citations (short names below resolve here): `apps/auth-service/src/main/java/com
 |---|---|
 | auth-service `UserService`, `SessionService`, `OAuthController` | read / write |
 | `CurrentUserResolver` | reads the row on every request (`CurrentUserResolver.java:49-55`) |
-| `/internal/token-versions` | publishes `id -> tokenVersion` for versions > 0 (`UserService.java:377`) |
+| `/internal/token-versions` | publishes `id -> tokenVersion` for versions > 0 (`UserService.java:402`) |
 | web `/users`, `/profile` | reads / writes through `/api/users` |
+| `POST /api/users/create` (admin; the `/users` page's New user form, `apps/web/src/app/users/user-list/user-list.ts:44-62`) | writes a verified user with a role |
 
 ## See
 

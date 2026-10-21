@@ -23,14 +23,17 @@ import java.util.Map;
  * The list is cached and re-read at most every few seconds, so a revocation bites here within that window
  * rather than on the next request.
  */
-// ponytail: fails open. If auth-service cannot be reached the last list stands, so a revocation made while it
-// is down is not seen here until it is back. Failing closed would take the service down with auth-service.
+// Fails closed, but late: if auth-service cannot be reached the last list stands for STALE_AFTER, then every
+// token is refused until a read succeeds. Before the first successful read there is no list, so nothing passes.
 @Component
 public class Revocations {
 
     private static final Logger log = LoggerFactory.getLogger(Revocations.class);
 
     static final Duration MAX_AGE = Duration.ofSeconds(10);
+
+    /** How long the last list read stands in for one auth-service cannot serve. */
+    static final Duration STALE_AFTER = Duration.ofMinutes(5);
 
     private final RestClient http;
 
@@ -39,6 +42,8 @@ public class Revocations {
     private volatile Map<String, Integer> versions = Map.of();
 
     private volatile Instant fetchedAt = Instant.MIN;
+
+    private volatile Instant readAt = Instant.MIN;
 
     public Revocations(@Value("${auth.token-versions-uri}") String uri) {
         JdkClientHttpRequestFactory requests = new JdkClientHttpRequestFactory(
@@ -51,22 +56,33 @@ public class Revocations {
 
     /** The lowest token version this user's tokens must carry. Zero for a user never revoked. */
     public int minimumVersion(String userId) {
-        if (stale()) {
-            refresh();
-        }
-        return versions.getOrDefault(userId, 0);
+        return current().getOrDefault(userId, 0);
     }
 
     /** The lowest {@code agentVer} this agent's own tokens must carry. Zero for an agent never revoked. */
     public int minimumAgentVersion(Long agentId) {
-        if (stale()) {
+        return current().getOrDefault("agent:" + agentId, 0);
+    }
+
+    /** The list, or IllegalStateException when the last good read is older than {@link #STALE_AFTER}. */
+    private Map<String, Integer> current() {
+        // Expired too, not only stale: a request that lands while another's read is in flight waits for that read
+        // (refresh is synchronized) instead of being refused on the list it is about to replace.
+        if (stale() || expired()) {
             refresh();
         }
-        return versions.getOrDefault("agent:" + agentId, 0);
+        if (expired()) {
+            throw new IllegalStateException("revocation list not read since " + readAt);
+        }
+        return versions;
     }
 
     private boolean stale() {
         return fetchedAt.plus(MAX_AGE).isBefore(Instant.now());
+    }
+
+    private boolean expired() {
+        return readAt.plus(STALE_AFTER).isBefore(Instant.now());
     }
 
     private synchronized void refresh() {
@@ -80,6 +96,7 @@ public class Revocations {
                     .body(new ParameterizedTypeReference<Map<String, Integer>>() {});
             if (fetched != null) {
                 versions = Map.copyOf(fetched);
+                readAt = fetchedAt;
             }
         } catch (Exception e) {
             log.warn("could not refresh revoked tokens from {}, keeping the last list: {}", uri, e.getMessage());

@@ -1,5 +1,6 @@
 package com.demo.authservice.user;
 
+import com.demo.authservice.user.dto.AdminNewUser;
 import com.demo.authservice.user.dto.EmailChange;
 import com.demo.authservice.user.dto.EmailConfirmation;
 import com.demo.authservice.user.dto.EmailStep;
@@ -48,6 +49,18 @@ public class UserController {
         return Map.of("email", users.register(req.name(), req.email(), req.password()).getEmail());
     }
 
+    /**
+     * A user made by an admin, with a role: proved by the admin's say-so, so no link is mailed, and it signs
+     * in at once with the password the admin hands over. Admin only, and apart from {@link #setRole} the only
+     * door off USER.
+     */
+    @PostMapping("/create")
+    @ResponseStatus(HttpStatus.CREATED)
+    public UserResponse create(User caller, @RequestBody AdminNewUser req) {
+        admin(caller);
+        return UserResponse.of(users.create(req.name(), req.email(), req.password(), req.role()));
+    }
+
     /** The caller themselves. Whoever holds the token is the only one who can ask. */
     @GetMapping("/me")
     public UserResponse me(User caller) {
@@ -92,8 +105,8 @@ public class UserController {
     }
 
     /**
-     * Promotes or demotes another user. Admin only, and the only route off USER: registration cannot ask
-     * for a role and {@link #update} cannot change one, so this endpoint is the single door.
+     * Promotes or demotes another user. Admin only. With {@link #create}, the only route off USER: registration
+     * cannot ask for a role and {@link #update} cannot change one.
      */
     @PutMapping("/{id}/role")
     public UserResponse setRole(User caller, @PathVariable Long id, @RequestBody RoleChange req) {

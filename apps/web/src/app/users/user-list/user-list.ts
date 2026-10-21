@@ -4,8 +4,9 @@ import { Auth, User, errorText, leaveWhenSignedOut } from '../../auth/auth';
 import { Role, Users } from '../users';
 
 /**
- * `/users`: everyone, for the roles that read everyone. A moderator only looks; an admin changes roles, suspends
- * and signs users out everywhere -- never itself, which auth-service refuses too, so those controls are not drawn.
+ * `/users`: everyone, for the roles that read everyone. A moderator only looks; an admin creates users, changes
+ * roles, suspends and signs users out everywhere -- never itself, which auth-service refuses too, so those controls
+ * are not drawn.
  */
 @Component({
   selector: 'app-user-list',
@@ -26,11 +27,37 @@ export class UserList {
   readonly me = computed(() => this.auth.user()?.id);
   readonly admin = computed(() => this.auth.user()?.role === 'ADMIN');
 
+  /** The new-user form. */
+  readonly newName = signal('');
+  readonly newEmail = signal('');
+  readonly newPassword = signal('');
+  readonly newRole = signal<Role>('USER');
+
   constructor() {
     leaveWhenSignedOut();
     this.users.list().then(
       (list) => this.list.set(list),
       (e) => this.error.set(errorText(e)),
+    );
+  }
+
+  create(): Promise<void> {
+    const email = this.newEmail().trim().toLowerCase();
+    return this.run(
+      `${email} was created. Hand them their password; they can change it on their profile.`,
+      async () => {
+        const user = await this.users.create({
+          name: this.newName(),
+          email,
+          password: this.newPassword(),
+          role: this.newRole(),
+        });
+        this.newName.set('');
+        this.newEmail.set('');
+        this.newPassword.set('');
+        this.newRole.set('USER');
+        return user;
+      },
     );
   }
 
@@ -59,13 +86,18 @@ export class UserList {
     return this.run(`${user.email} was signed out everywhere.`, () => this.users.revoke(user.id));
   }
 
+  /** An answered user replaces its row, or is appended when new. */
   private async run(done: string, action: () => Promise<User>): Promise<void> {
     this.busy.set(true);
     this.error.set('');
     this.notice.set('');
     try {
       const updated = await action();
-      this.list.update((list) => list?.map((u) => (u.id === updated.id ? updated : u)) ?? null);
+      this.list.update((list) =>
+        list?.some((u) => u.id === updated.id)
+          ? list.map((u) => (u.id === updated.id ? updated : u))
+          : [...(list ?? []), updated],
+      );
       this.notice.set(done);
     } catch (e) {
       this.error.set(errorText(e));

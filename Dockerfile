@@ -19,17 +19,17 @@ USER app
 
 FROM runtime AS auth-service
 COPY --from=build /src/apps/auth-service/target/auth-service-*.jar app.jar
-EXPOSE 9081
+EXPOSE 1001
 CMD ["java", "-jar", "app.jar"]
 
 FROM runtime AS todo-service
 COPY --from=build /src/apps/todo-service/target/todo-service-*.jar app.jar
-EXPOSE 9082
+EXPOSE 1002
 CMD ["java", "-jar", "app.jar"]
 
 FROM runtime AS agent-service
 COPY --from=build /src/apps/agent-service/target/agent-service-*.jar app.jar
-EXPOSE 9083
+EXPOSE 1003
 CMD ["java", "-jar", "app.jar"]
 
 FROM node:24-alpine AS web-build
